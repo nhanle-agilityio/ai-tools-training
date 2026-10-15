@@ -76,3 +76,13 @@ def test_project_stats_for_project_without_tasks(client, project):
     assert stats["total"] == 0
     assert stats["by_status"] == {"todo": 0, "in_progress": 0, "done": 0}
     assert stats["completion_rate"] == 0
+    assert stats["in_progress_rate"] == 0
+
+
+def test_project_stats_in_progress_rate(client, project, make_task):
+    make_task(status="in_progress")
+    make_task(status="todo")
+    make_task(status="todo")
+
+    stats = client.get(f"/projects/{project['id']}/stats").get_json()
+    assert stats["in_progress_rate"] == 33.3
