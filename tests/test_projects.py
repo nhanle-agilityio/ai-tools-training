@@ -1,3 +1,6 @@
+import pytest
+
+
 def test_health(client):
     assert client.get("/health").get_json() == {"status": "ok"}
 
@@ -44,3 +47,32 @@ def test_project_stats_counts_by_status(client, project, make_task):
     stats = client.get(f"/projects/{project['id']}/stats").get_json()
     assert stats["total"] == 4
     assert stats["by_status"] == {"todo": 2, "in_progress": 1, "done": 1}
+
+
+@pytest.mark.parametrize(
+    "done, todo, expected",
+    [
+        (1, 2, 33.3),
+        (2, 1, 66.7),
+        (3, 0, 100),
+    ],
+)
+def test_project_stats_completion_rate_is_rounded_percentage(
+    client, project, make_task, done, todo, expected
+):
+    for _ in range(done):
+        make_task(status="done")
+    for _ in range(todo):
+        make_task(status="todo")
+
+    stats = client.get(f"/projects/{project['id']}/stats").get_json()
+    assert stats["completion_rate"] == expected
+
+
+def test_project_stats_for_project_without_tasks(client, project):
+    resp = client.get(f"/projects/{project['id']}/stats")
+    assert resp.status_code == 200
+    stats = resp.get_json()
+    assert stats["total"] == 0
+    assert stats["by_status"] == {"todo": 0, "in_progress": 0, "done": 0}
+    assert stats["completion_rate"] == 0
