@@ -51,7 +51,7 @@ def project_stats(db, project_id):
         "project_id": project_id,
         "total": total,
         "by_status": {status: counts.get(status, 0) for status in VALID_STATUSES},
-        "completion_rate": done // total * 100,
+        "completion_rate": done // total * 100 if total else 0,
     }
 
 
