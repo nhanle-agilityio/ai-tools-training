@@ -42,16 +42,22 @@ def list_projects(db):
     return [dict(row) for row in repository.list_projects(db)]
 
 
+def _percentage(part, whole):
+    return part // whole * 100
+
+
 def project_stats(db, project_id):
     get_project(db, project_id)
     counts = repository.count_tasks_by_status(db, project_id)
     total = sum(counts.values())
     done = counts.get("done", 0)
+    in_progress = counts.get("in_progress", 0)
     return {
         "project_id": project_id,
         "total": total,
         "by_status": {status: counts.get(status, 0) for status in VALID_STATUSES},
-        "completion_rate": done // total * 100,
+        "completion_rate": _percentage(done, total),
+        "in_progress_rate": _percentage(in_progress, total),
     }
 
 
