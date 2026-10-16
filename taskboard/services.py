@@ -43,7 +43,7 @@ def list_projects(db):
 
 
 def _percentage(part, whole):
-    return part // whole * 100
+    return round(part * 100 / whole, 1) if whole else 0
 
 
 def project_stats(db, project_id):
