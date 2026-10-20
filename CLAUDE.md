@@ -1,77 +1,36 @@
-# CLAUDE.md
+# CLAUDE.md — TaskBoard
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-## What this repository is
-
-TaskBoard is a small task-management REST API (project → task → tag) built with Flask + SQLite. It is the **practice app for a 15-day Claude training program**, not production or client code. The codebase **intentionally contains a few real bugs** so trainees can practice the full workflow: ticket → reproduce → fix on a branch → PR → review → resolve conflicts → merge. Bug tickets live in `docs/tickets/` (TB-101…TB-106).
-
-When asked to "fix" something, first check whether it maps to a ticket in `docs/tickets/` — the ticket is the source of truth for expected behavior.
+Flask + SQLite task API used for Claude training. Not client code. It contains
+intentional bugs tracked in `docs/tickets/` (TB-xxx) — the ticket is the source
+of truth for expected behavior, not the current code.
 
 ## Commands
 
-All commands go through the Makefile (which drives a `.venv`):
-
 ```bash
-make setup                     # create .venv and install requirements (override: make setup PYTHON=python3.11)
-make test                      # run the full pytest suite
-make seed                      # reset instance/taskboard.sqlite and load demo data
-make run                       # serve at http://127.0.0.1:5050 (flask --debug)
-make clean                     # remove .venv, instance/, .pytest_cache
+make setup | make test | make seed | make run    # run serves http://127.0.0.1:5050
+.venv/bin/pytest -k <keyword>                     # narrow test loop
+.venv/bin/ruff check . && .venv/bin/ruff format --check .
 ```
 
-Direct tooling (useful for narrower loops):
+## Architecture (one-way, never skip a layer)
 
-```bash
-.venv/bin/pytest tests/test_tasks.py                          # one test file
-.venv/bin/pytest tests/test_tasks.py::test_name              # one test
-.venv/bin/pytest -k overdue                                   # tests matching a keyword
-.venv/bin/flask --app taskboard init-db                      # drop + recreate tables (no demo data)
-.venv/bin/ruff format .                                       # format the whole tree
-.venv/bin/ruff check .                                        # lint
-```
+routes.py (HTTP only) → services.py (logic, calls validators) → repository.py (all SQL) → db.py
 
-There is no separate build step — it's a pure-Python app run via the Flask CLI.
+- Raise `ValidationError` / `NotFoundError`; handlers in `__init__.py` map them to 400 / 404.
+- Tasks returned to clients go through `services._serialize_tasks` (adds tags + is_overdue).
 
-## Architecture
+## Conventions
 
-The app uses the **Flask application-factory pattern** and a strict one-way layering. A request always flows down these layers and never skips one:
+- Everything committed is in English: code, docs, commits, MR descriptions.
+- Conventional Commits, scope = ticket id: `fix(TB-101): ...`, `test(TB-101): ...`.
+- Bug fixes: failing-test commit first, then the fix, as separate small commits.
+- Branches: `fix/TB-xxx-short-desc` from `feature/example_taskboard`; MRs target it.
+- Tests go through the HTTP layer with the `client` / `project` / `make_task` fixtures.
+- A hook runs `ruff format` (line length 110) on every edited .py file — don't fight its output.
 
-```
-routes.py      HTTP only: read request args/body, call a service, jsonify the result
-   ↓
-services.py    business logic + orchestration; the ONLY layer that calls validators
-   ↓
-validators.py  pure input validation; raises ValidationError
-repository.py  all SQL lives here; returns sqlite3.Row objects, never dicts of business logic
-   ↓
-db.py          per-request SQLite connection
-```
+## Never
 
-Key things that require reading several files to understand:
-
-- **App wiring** — `create_app()` in `taskboard/__init__.py` builds the app, registers the `routes.py` blueprint, wires `db.init_app`, and registers the two error handlers that turn exceptions into JSON. `/health` is defined inline here, not in the blueprint.
-
-- **Error model is exception-driven.** Services and validators raise `ValidationError` / `NotFoundError` (defined in `errors.py`). They are *never* caught in routes — the handlers registered in `__init__.py` map them to `{"error": ...}` with HTTP **400** and **404** respectively. To signal a bad request from anywhere below the route, raise `ValidationError`; don't build an error response by hand.
-
-- **Database lifecycle.** `db.get_db()` lazily opens one `sqlite3` connection per request, stores it on Flask's `g`, sets `row_factory = sqlite3.Row` and enables `PRAGMA foreign_keys = ON`. `init_app` registers a teardown that closes it. Rows are `sqlite3.Row`; convert with `dict(row)` at the service boundary. `init-db` and `seed` are Flask CLI commands added in `db.py`, backed by `schema.sql` and `seed.py`.
-
-- **Task serialization is centralized.** `services._serialize_tasks` is the single place that attaches `tags` (batch-fetched via `repository.get_tags` to avoid N+1) and the computed `is_overdue` flag onto task rows. Any new read path that returns tasks should go through it so the shape stays consistent.
-
-- **Overdue is computed, not stored.** `is_overdue` compares ISO-8601 strings; a task is overdue only if it has a `due_date`, is past it, and is not `done`. `list_overdue_tasks` filters in Python after the repository narrows to open tasks with a due date.
-
-- **Allowed values & sorting are defined once.** `VALID_STATUSES`/priority live in `validators.py`; sortable columns are `repository.SORT_CLAUSES`. `list_tasks` validates `sort` against that dict rather than interpolating user input into SQL.
-
-## Testing conventions
-
-Tests use the real app through Flask's test client against a **fresh temporary SQLite file per test** (`conftest.py` `app` fixture + `tmp_path`). Prefer exercising behavior through the HTTP layer via the `client`, `project`, and `make_task` fixtures rather than calling services directly — that is the established pattern in `tests/`.
-
-## Workflow conventions
-
-- **Commits/PRs are in English and follow Conventional Commits** (`type(scope): subject`), where `scope` is the ticket id (e.g. `fix(TB-104): …`) or a module. A `commit-message` skill encodes this.
-- A **ruff format hook** (`.claude/settings.json`, PostToolUse on Write|Edit) auto-formats `.py` files after every edit. Match ruff's output; don't hand-format against it.
-- `docs/tickets/` (English) is the committed backlog.
-
-## Model selection (token optimization)
-
-Opus: plan, decide, review every diff. Sonnet agents: implement approved steps. Haiku agents: search, run tests, report failures only. Wait for approval before building. Be terse.
+- Never `git add -A` / `git add .` — stage the files you changed by name.
+- Never fix or refactor outside the ticket you were asked about; mention it instead.
+- Never edit a ticket's acceptance criteria to make a test pass.
+- Never decide an ambiguous requirement silently — ask, or state it as an assumption in the MR.
