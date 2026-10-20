@@ -4,7 +4,6 @@ import pytest
 
 from taskboard.services import is_overdue
 
-
 # --- create / read / delete -----------------------------------------------------
 
 
