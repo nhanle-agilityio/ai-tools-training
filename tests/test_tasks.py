@@ -101,9 +101,7 @@ def test_list_tasks_search(client, make_task):
 
 
 def _search_ids(client, q):
-    return [
-        t["id"] for t in client.get("/tasks", query_string={"q": q}).get_json()["items"]
-    ]
+    return [t["id"] for t in client.get("/tasks", query_string={"q": q}).get_json()["items"]]
 
 
 def test_list_tasks_search_is_case_insensitive(client, make_task):
