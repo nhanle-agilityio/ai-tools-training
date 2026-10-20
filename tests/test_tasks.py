@@ -29,7 +29,10 @@ def test_create_task_validation(client, project):
         ({"project_id": project["id"]}, "title"),
         ({"project_id": project["id"], "title": "x", "status": "blocked"}, "status"),
         ({"project_id": project["id"], "title": "x", "priority": "urgent"}, "priority"),
-        ({"project_id": project["id"], "title": "x", "due_date": "2026-02-30"}, "due_date"),
+        (
+            {"project_id": project["id"], "title": "x", "due_date": "2026-02-30"},
+            "due_date",
+        ),
         ({"project_id": project["id"], "title": "x", "tags": "bug"}, "tags"),
     ]
     for payload, field in cases:
@@ -96,6 +99,48 @@ def test_list_tasks_search(client, make_task):
     make_task(title="Write release notes")
     items = client.get("/tasks?q=payment").get_json()["items"]
     assert [t["id"] for t in items] == [match["id"]]
+
+
+def _search_ids(client, q):
+    return [
+        t["id"] for t in client.get("/tasks", query_string={"q": q}).get_json()["items"]
+    ]
+
+
+def test_list_tasks_search_is_case_insensitive(client, make_task):
+    match = make_task(title="Fix Login crash on Android 14")
+    make_task(title="Write release notes")
+    assert _search_ids(client, "login") == [match["id"]]
+
+
+def test_list_tasks_search_same_result_regardless_of_case(client, make_task):
+    make_task(title="Login with Google")
+    make_task(title="Biometric login (Face ID)")
+    make_task(title="Write release notes")
+    expected = _search_ids(client, "Login")
+    assert len(expected) == 2
+    assert _search_ids(client, "login") == expected
+    assert _search_ids(client, "LOGIN") == expected
+
+
+def test_list_tasks_search_description_is_case_insensitive(client, make_task):
+    match = make_task(title="Auth work", description="Investigate the LOGIN timeout")
+    make_task(title="Write release notes")
+    assert _search_ids(client, "login") == [match["id"]]
+
+
+def test_list_tasks_search_treats_wildcards_literally(client, make_task):
+    match = make_task(title="Raise coverage to 90%")
+    make_task(title="Write release notes")
+    assert _search_ids(client, "%") == [match["id"]]
+    assert _search_ids(client, "_") == []
+
+
+def test_list_tasks_search_non_ascii_case_is_not_folded(client, make_task):
+    # Known limitation: SQLite's built-in lower() only folds ASCII letters.
+    make_task(title="Éclair recipe")
+    assert _search_ids(client, "éclair") == []
+    assert len(_search_ids(client, "Éclair")) == 1
 
 
 def test_list_tasks_sort_by_due_date(client, make_task):
