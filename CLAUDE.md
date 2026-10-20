@@ -74,13 +74,4 @@ Tests use the real app through Flask's test client against a **fresh temporary S
 
 ## Model selection (token optimization)
 
-Match the model to the work to minimize tokens — **plan & review on Opus, code on Sonnet, test on Haiku.**
-
-| Phase | Model | Model ID |
-| --- | --- | --- |
-| Plan (analysis, root cause, design, conflicts) | Opus 5.5 | `claude-opus-5-5` |
-| Code (implement the fix, PR text, routine edits) | Sonnet 5.5 | `claude-sonnet-5-5` |
-| Review / advice (PR review, bug hunting, second opinion) | Opus 5.5 | `claude-opus-5-5` |
-| Test (run/scaffold tests, search, pass/fail triage) | Haiku 5.5 | `claude-haiku-5-5` |
-
-Opus 5.5's biggest capability gains are in **code review** and acting as a thought partner, so it's the model for the review/advice step as well as planning. Switch the main thread with `/model`; give subagents a cheaper `model` override (e.g. Haiku for search/test). Lower `effort` for simple tasks. This is a cost strategy only — move back up to Sonnet/Opus if a step turns into real debugging.
+Opus: plan, decide, review every diff. Sonnet agents: implement approved steps. Haiku agents: search, run tests, report failures only. Wait for approval before building. Be terse.
