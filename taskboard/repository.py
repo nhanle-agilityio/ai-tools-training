@@ -102,13 +102,17 @@ def _task_filters(project_id, status, q):
         where.append("t.status = ?")
         params.append(status)
     if q:
-        where.append("(instr(t.title, ?) > 0 OR instr(t.description, ?) > 0)")
+        where.append(
+            "(instr(lower(t.title), lower(?)) > 0 OR instr(lower(t.description), lower(?)) > 0)"
+        )
         params.extend([q, q])
     clause = f"WHERE {' AND '.join(where)}" if where else ""
     return clause, params
 
 
-def list_tasks(db, *, project_id=None, status=None, q=None, sort="created_at", limit, offset):
+def list_tasks(
+    db, *, project_id=None, status=None, q=None, sort="created_at", limit, offset
+):
     clause, params = _task_filters(project_id, status, q)
     total = db.execute(f"SELECT COUNT(*) FROM tasks t {clause}", params).fetchone()[0]
     rows = db.execute(
