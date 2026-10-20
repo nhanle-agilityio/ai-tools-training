@@ -1,5 +1,6 @@
 """Business logic. Routes call into this module; this module calls the repository."""
 
+import math
 from datetime import datetime
 
 from . import repository
@@ -120,7 +121,7 @@ def delete_task(db, task_id):
 
 
 def paginate(total, page, per_page):
-    pages = max(total // per_page, 1)
+    pages = max(math.ceil(total / per_page), 1)
     if page > pages:
         raise ValidationError(f"page {page} is out of range (1-{pages})")
     return {

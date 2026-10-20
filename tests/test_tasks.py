@@ -1,5 +1,7 @@
 from datetime import date, timedelta
 
+import pytest
+
 from taskboard.services import is_overdue
 
 
@@ -120,6 +122,57 @@ def test_list_tasks_pagination(client, make_task):
         "pages": 2,
         "has_next": False,
     }
+
+
+def test_list_tasks_pagination_partial_last_page(client, make_task):
+    for i in range(23):
+        make_task(title=f"task {i}")
+    body = client.get("/tasks?per_page=10&page=1").get_json()
+    assert body["pagination"]["pages"] == 3
+    body = client.get("/tasks?per_page=10&page=2").get_json()
+    assert body["pagination"]["has_next"] is True
+    resp = client.get("/tasks?per_page=10&page=3")
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert len(body["items"]) == 3
+    assert body["pagination"]["has_next"] is False
+
+
+@pytest.mark.parametrize("per_page", [1, 3, 7, 10, 23, 50])
+def test_list_tasks_pagination_reaches_every_task(client, make_task, per_page):
+    created = [make_task(title=f"task {i}")["id"] for i in range(23)]
+    collected = []
+    page = 1
+    while True:
+        resp = client.get(f"/tasks?per_page={per_page}&page={page}")
+        assert resp.status_code == 200
+        body = resp.get_json()
+        collected.extend(item["id"] for item in body["items"])
+        if not body["pagination"]["has_next"]:
+            break
+        page += 1
+    assert sorted(collected) == sorted(created)
+    assert len(collected) == len(set(collected)) == 23
+
+
+def test_list_tasks_pagination_empty_list(client):
+    resp = client.get("/tasks?per_page=10&page=1")
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["items"] == []
+    assert body["pagination"] == {
+        "page": 1,
+        "per_page": 10,
+        "total": 0,
+        "pages": 1,
+        "has_next": False,
+    }
+
+
+def test_list_tasks_pagination_page_past_last_is_400(client, make_task):
+    for i in range(23):
+        make_task(title=f"task {i}")
+    assert client.get("/tasks?per_page=10&page=4").status_code == 400
 
 
 # --- overdue ----------------------------------------------------------------------
