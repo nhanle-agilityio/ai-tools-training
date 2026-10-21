@@ -3,7 +3,10 @@
 SORT_CLAUSES = {
     "created_at": "t.created_at DESC, t.id DESC",
     "due_date": "t.due_date IS NULL, t.due_date ASC, t.id ASC",
-    "priority": "t.priority ASC, t.id ASC",
+    "priority": (
+        "CASE t.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 WHEN 'low' THEN 2 ELSE 3 END, "
+        "t.due_date IS NULL, t.due_date ASC, t.id ASC"
+    ),
 }
 
 
