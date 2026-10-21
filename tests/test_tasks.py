@@ -70,6 +70,28 @@ def test_update_task_tags(client, make_task):
     assert resp.get_json()["tags"] == ["b", "c"]
 
 
+def test_update_task_status_keeps_tags(client, make_task):
+    task = make_task(tags=["android", "bug"])
+    resp = client.patch(f"/tasks/{task['id']}", json={"status": "done"})
+    assert resp.status_code == 200
+    assert resp.get_json()["status"] == "done"
+    assert client.get(f"/tasks/{task['id']}").get_json()["tags"] == ["android", "bug"]
+
+
+def test_update_task_empty_tags_clears_tags(client, make_task):
+    task = make_task(tags=["android", "bug"])
+    resp = client.patch(f"/tasks/{task['id']}", json={"tags": []})
+    assert resp.status_code == 200
+    assert client.get(f"/tasks/{task['id']}").get_json()["tags"] == []
+
+
+def test_update_task_tags_replaces_existing(client, make_task):
+    task = make_task(tags=["android", "bug"])
+    resp = client.patch(f"/tasks/{task['id']}", json={"tags": ["x"]})
+    assert resp.status_code == 200
+    assert client.get(f"/tasks/{task['id']}").get_json()["tags"] == ["x"]
+
+
 def test_update_task_rejects_invalid_status(client, make_task):
     task = make_task()
     resp = client.patch(f"/tasks/{task['id']}", json={"status": "archived"})

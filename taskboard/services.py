@@ -109,9 +109,10 @@ def update_task(db, task_id, data):
         "priority": validate_priority(data.get("priority", task["priority"])),
         "due_date": validate_due_date(data.get("due_date", task["due_date"])),
     }
-    tags = validate_tags(data.get("tags", []))
+    tags = validate_tags(data["tags"]) if "tags" in data else None
     repository.update_task(db, task_id, fields, _now())
-    repository.set_tags(db, task_id, tags)
+    if tags is not None:
+        repository.set_tags(db, task_id, tags)
     return get_task(db, task_id)
 
 
