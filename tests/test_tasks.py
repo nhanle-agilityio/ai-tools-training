@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 
 import pytest
 
@@ -307,3 +307,33 @@ def test_overdue_endpoint(client, make_task):
     make_task(due_date="2999-01-01")
     items = client.get("/tasks/overdue").get_json()["items"]
     assert [t["id"] for t in items] == [late["id"]]
+
+
+FROZEN_TODAY = date(2026, 3, 15)
+
+
+@pytest.fixture(params=["00:01", "23:59"])
+def frozen_now(request, monkeypatch):
+    frozen = datetime.combine(FROZEN_TODAY, time.fromisoformat(request.param))
+
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return frozen
+
+    monkeypatch.setattr("taskboard.services.datetime", FrozenDatetime)
+    return frozen
+
+
+def test_task_due_today_is_not_overdue(client, make_task, frozen_now):
+    task = make_task(due_date=FROZEN_TODAY.isoformat())
+    assert client.get(f"/tasks/{task['id']}").get_json()["is_overdue"] is False
+    items = client.get("/tasks/overdue").get_json()["items"]
+    assert task["id"] not in [t["id"] for t in items]
+
+
+def test_task_due_yesterday_is_overdue(client, make_task, frozen_now):
+    task = make_task(due_date=(FROZEN_TODAY - timedelta(days=1)).isoformat())
+    assert client.get(f"/tasks/{task['id']}").get_json()["is_overdue"] is True
+    items = client.get("/tasks/overdue").get_json()["items"]
+    assert [t["id"] for t in items] == [task["id"]]
