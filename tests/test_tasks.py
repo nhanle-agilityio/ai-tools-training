@@ -148,6 +148,50 @@ def test_list_tasks_sort_by_due_date(client, make_task):
     assert [t["id"] for t in items] == [sooner["id"], later["id"], no_date["id"]]
 
 
+def test_list_tasks_sort_by_priority_high_medium_low(client, make_task):
+    low = make_task(title="low task", priority="low")
+    high = make_task(title="high task", priority="high")
+    medium = make_task(title="medium task", priority="medium")
+    items = client.get("/tasks?sort=priority").get_json()["items"]
+    assert [t["id"] for t in items] == [high["id"], medium["id"], low["id"]]
+
+
+def test_list_tasks_sort_by_priority_due_date_within_priority(client, make_task):
+    high_later = make_task(title="high later", priority="high", due_date="2030-05-01")
+    high_no_date = make_task(title="high no date", priority="high")
+    high_sooner = make_task(title="high sooner", priority="high", due_date="2030-01-01")
+    medium = make_task(title="medium task", priority="medium")
+    items = client.get("/tasks?sort=priority").get_json()["items"]
+    assert [t["id"] for t in items] == [
+        high_sooner["id"],
+        high_later["id"],
+        high_no_date["id"],
+        medium["id"],
+    ]
+
+
+def test_list_tasks_sort_by_priority_pagination(client, make_task):
+    low = make_task(title="low", priority="low", due_date="2030-01-01")
+    medium_no_date = make_task(title="medium no date", priority="medium")
+    high_later = make_task(title="high later", priority="high", due_date="2030-05-01")
+    medium_dated = make_task(title="medium dated", priority="medium", due_date="2030-03-01")
+    high_sooner = make_task(title="high sooner", priority="high", due_date="2030-01-01")
+    expected = [
+        high_sooner["id"],
+        high_later["id"],
+        medium_dated["id"],
+        medium_no_date["id"],
+        low["id"],
+    ]
+    ids = []
+    for page in (1, 2, 3):
+        body = client.get(f"/tasks?sort=priority&per_page=2&page={page}").get_json()
+        if page == 1:
+            assert body["pagination"]["total"] == 5
+        ids += [t["id"] for t in body["items"]]
+    assert ids == expected
+
+
 def test_list_tasks_rejects_unknown_sort(client):
     assert client.get("/tasks?sort=title").status_code == 400
 
