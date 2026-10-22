@@ -68,8 +68,7 @@ def project_stats(db, project_id):
 def is_overdue(task, now=None):
     if task["status"] == "done" or not task["due_date"]:
         return False
-    now = now or datetime.now()
-    return task["due_date"] < now.isoformat()
+    return task["due_date"] < (now or datetime.now()).date().isoformat()
 
 
 def _serialize_tasks(db, rows):
