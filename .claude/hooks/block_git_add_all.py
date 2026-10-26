@@ -11,8 +11,8 @@ looked through. If shlex can't parse the command (an apostrophe in a heredoc),
 a regex on the raw text decides instead, so unrelated commands are not blocked.
 
 This guards against habit, not against evasion. Known gaps: `$(...)` inside
-double quotes, `eval`, and other interpreters (`python -c`). Runs on the system
-python3 (3.9).
+double quotes, `eval`, other interpreters (`python -c`), and long wrapper options
+with a separate value (`sudo --user root`). Runs on the system python3 (3.9).
 """
 
 import json
@@ -21,8 +21,19 @@ import shlex
 import sys
 
 OPERATORS = {";", "&", "&&", "|", "||", "(", ")"}
-WRAPPERS = {"env", "sudo", "command", "nice", "xargs", "time"}
+# Wrapper commands, each with its own short options that take a separate value
+# (`sudo -u root`, `nice -n 5`). Per wrapper, because `-s` takes a value for xargs
+# but not for sudo.
+WRAPPERS = {
+    "env": {"-u", "-C", "-S", "-P"},
+    "sudo": {"-u", "-g", "-h", "-p", "-U", "-C", "-D", "-r", "-t", "-T"},
+    "command": set(),
+    "nice": {"-n"},
+    "xargs": {"-I", "-L", "-n", "-P", "-s", "-d", "-E", "-a"},
+    "time": {"-f", "-o"},
+}
 SHELLS = {"bash", "sh", "zsh"}
+SHELL_COMMAND_FLAG = re.compile(r"-[a-zA-Z]*c[a-zA-Z]*")  # -c, -lc, -ec
 # Git options before the subcommand that take a separate value (`git -C dir add`).
 GIT_OPTIONS_WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env"}
 STAGE_ALL_ARGS = {"-A", "--all", ".", "./", ":/"}
@@ -48,15 +59,31 @@ def segments(command):
     yield segment
 
 
+def option_width(flag, takes_value):
+    """How many tokens a wrapper option uses, getopt style.
+
+    `-E` is 1. `-u root` is 2. In a group the first flag that takes a value ends it:
+    `-Eu root` is 2, while `-uroot` is 1 because the rest of the token is the value.
+    """
+    if flag.startswith("--"):
+        return 1
+    for i, char in enumerate(flag[1:], start=1):
+        if "-" + char in takes_value:
+            return 2 if i == len(flag) - 1 else 1
+    return 1
+
+
 def stages_everything(tokens):
     """True if the tokens are a `git ... add` call that stages the whole tree."""
     while tokens and (tokens[0] in WRAPPERS or ("=" in tokens[0] and not tokens[0].startswith("-"))):
-        tokens = tokens[1:]  # leading VAR=value assignments and wrapper commands
+        takes_value = WRAPPERS.get(tokens[0], set())
+        tokens = tokens[1:]  # a VAR=value assignment or a wrapper command
         while tokens and tokens[0].startswith("-"):
-            tokens = tokens[1:]  # the wrapper's own flags (`env -i`, `sudo -E`)
-    if tokens and tokens[0] in SHELLS and "-c" in tokens[1:-1]:
-        inner = tokens[tokens.index("-c") + 1]
-        return any(stages_everything(t) for t in segments(inner))
+            tokens = tokens[option_width(tokens[0], takes_value) :]  # the wrapper's own flags
+    if tokens and tokens[0] in SHELLS:
+        for i, token in enumerate(tokens[1:-1], start=1):
+            if SHELL_COMMAND_FLAG.fullmatch(token):
+                return any(stages_everything(t) for t in segments(tokens[i + 1]))
     if not tokens or tokens[0] != "git":
         return False
 
