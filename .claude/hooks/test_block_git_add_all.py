@@ -60,6 +60,14 @@ def run_hook(command):
         "sudo -u root env -u FOO git add -A",
         "bash -lc 'git add .'",
         "bash -e -c 'git add -A'",
+        # /code-review on the per-wrapper option tables
+        "xargs -J % git add .",
+        "sudo -R / git add .",
+        "sudo --user root git add .",
+        "sudo -u git git add .",
+        "env -S 'git add .'",
+        "bash -c -- 'git add .'",
+        "bash -o pipefail -c 'git add -A'",
         # Blocked before the fix above; a shared option list broke them (the /goal regression)
         "sudo -s git add .",
         "sudo -P git add .",
@@ -91,6 +99,8 @@ def test_blocks_staging_everything(command):
         "bash -c 'git add docs/a.md'",
         "sudo -u root git add docs/a.md",
         "bash -lc 'git status'",
+        "bash script.sh -c 'git add .'",
+        "sudo echo 'git add .'",
         # Second review: unbalanced quotes in unrelated commands must not be blocked
         "cat > notes.md <<'EOF'\nit's done\nEOF",
         "echo it's fine",
