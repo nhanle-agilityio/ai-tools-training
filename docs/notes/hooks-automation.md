@@ -122,11 +122,33 @@ the first real review was on the next PR (#4, the hook).
 #### Fixing the noise (PR #5)
 
 Eight threads across three rounds made it hard to see what was resolved. The workflow now reviews once
-when the PR is opened (`@claude review again` for another round), keeps one sticky summary, and reads the
-existing threads first so it does not repeat answered points.
+when the PR is opened (`@claude review again` for another round) and reads the existing threads first so
+it does not repeat answered points. It also turned on `use_sticky_comment`, which turned out to do
+nothing here (see PR #7).
 
 The bot does not resolve threads. The author replies to each thread with the fixing commit or the
 won't-fix reason, then resolves it. On PR #4 we replied through the GitHub MCP and resolved by hand.
+
+#### A green check that posted nothing (PR #7)
+
+The first review with the new workflow (on PR #6, this notes PR) passed in 33s and left no comment at
+all. The job log showed a clean run: 5 turns, no permission denials, about $0.07 on Sonnet.
+
+- With a custom `prompt`, the action runs in agent mode. Claude's final answer goes to the hidden job log;
+  only what it posts with `gh pr comment` or inline comments reaches the PR. The prompt said "say No
+  issues found" without saying where, so on a docs-only PR it said it to the log.
+- `use_sticky_comment` from PR #5 does nothing in this mode; it applies to the tracking comment of
+  `@claude` runs.
+
+PR #7 makes the prompt post one summary on every run, using
+`gh pr comment <PR> --edit-last --create-if-none` to keep a single comment, and drops
+`use_sticky_comment`. Closing and reopening PR #6 re-ran the review: one comment, "No issues found".
+
+A green check only means the job did not crash. Check that the result is on the PR.
+
+The log also shows a safety default: the action restores `.claude/` and `CLAUDE.md` from the base
+branch, because the PR head is untrusted. A PR can't change the review rules or add hooks that run in
+CI.
 
 ## Workflow change
 
@@ -144,3 +166,5 @@ fast-forward push of `feature/example_taskboard`, without an MR.
 - **The higher the rung, the less approval.** `/goal` runs in a session you watch; routines and Actions run
   with no one approving each step. Scope tokens and connectors to match.
 - **Automated review is worth one or two rounds, not more.** After that, review on demand.
+- **Verify the output, not the status.** A successful review job can post nothing; tell the agent where
+  its result must go.
