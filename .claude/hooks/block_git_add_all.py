@@ -6,17 +6,30 @@ stderr back to Claude so it can retry with explicit paths.
 
 The command is split like a shell would (shlex), so quoted arguments such as
 `git add "."` are still caught, while a commit message or an `echo` that only
-mentions `git add -A` is not. Runs on the system python3 (3.9).
+mentions `git add -A` is not. Wrappers (`env`, `sudo`, `bash -c '...'`) are
+looked through. If shlex can't parse the command (an apostrophe in a heredoc),
+a regex on the raw text decides instead, so unrelated commands are not blocked.
+
+This guards against habit, not against evasion. Known gaps: `$(...)` inside
+double quotes, `eval`, and other interpreters (`python -c`). Runs on the system
+python3 (3.9).
 """
 
 import json
+import re
 import shlex
 import sys
 
 OPERATORS = {";", "&", "&&", "|", "||", "(", ")"}
+WRAPPERS = {"env", "sudo", "command", "nice", "xargs", "time"}
+SHELLS = {"bash", "sh", "zsh"}
 # Git options before the subcommand that take a separate value (`git -C dir add`).
 GIT_OPTIONS_WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env"}
 STAGE_ALL_ARGS = {"-A", "--all", ".", "./", ":/"}
+# Fallback for commands shlex can't parse: `git ... add ... <stage-all arg>` on one line.
+STAGE_ALL_RE = re.compile(
+    r"""\bgit\b[^\n;&|]*?\sadd\b[^\n;&|]*?\s["']?(-A|--all|-\w*A\w*|\./?|:/)["']?(\s|$)"""
+)
 
 MESSAGE = "CLAUDE.md: never 'git add -A' / 'git add .'; stage the files you changed by name."
 
@@ -37,8 +50,13 @@ def segments(command):
 
 def stages_everything(tokens):
     """True if the tokens are a `git ... add` call that stages the whole tree."""
-    while tokens and "=" in tokens[0] and not tokens[0].startswith("-"):
-        tokens = tokens[1:]  # leading VAR=value assignments
+    while tokens and (tokens[0] in WRAPPERS or ("=" in tokens[0] and not tokens[0].startswith("-"))):
+        tokens = tokens[1:]  # leading VAR=value assignments and wrapper commands
+        while tokens and tokens[0].startswith("-"):
+            tokens = tokens[1:]  # the wrapper's own flags (`env -i`, `sudo -E`)
+    if tokens and tokens[0] in SHELLS and "-c" in tokens[1:-1]:
+        inner = tokens[tokens.index("-c") + 1]
+        return any(stages_everything(t) for t in segments(inner))
     if not tokens or tokens[0] != "git":
         return False
 
@@ -59,12 +77,12 @@ def stages_everything(tokens):
 def main():
     command = json.load(sys.stdin).get("tool_input", {}).get("command", "")
     try:
-        blocked = [tokens for tokens in segments(command) if stages_everything(tokens)]
-    except ValueError as error:  # e.g. an unclosed quote
-        print(f"Blocked: could not parse the command ({error}). {MESSAGE}", file=sys.stderr)
-        return 2
+        blocked = [shlex.join(tokens) for tokens in segments(command) if stages_everything(tokens)]
+    except ValueError:  # unbalanced quotes, e.g. an apostrophe in a heredoc body
+        match = STAGE_ALL_RE.search(command)
+        blocked = [match.group(0).strip()] if match else []
     if blocked:
-        print(f"Blocked: '{shlex.join(blocked[0])}'. {MESSAGE}", file=sys.stderr)
+        print(f"Blocked: '{blocked[0]}'. {MESSAGE}", file=sys.stderr)
         return 2
     return 0
 
