@@ -50,6 +50,21 @@ def run_hook(command):
         "env -i git add -A",
         "sudo git add .",
         "command git add .",
+        # Third review: wrapper options that take a value, and combined shell flags
+        "sudo -u root git add .",
+        "sudo -uroot git add .",
+        "sudo -Eu root git add .",
+        "nice -n 5 git add -A",
+        "env -u FOO git add .",
+        "xargs -I {} git add .",
+        "sudo -u root env -u FOO git add -A",
+        "bash -lc 'git add .'",
+        "bash -e -c 'git add -A'",
+        # Blocked before the fix above; a shared option list broke them (the /goal regression)
+        "sudo -s git add .",
+        "sudo -P git add .",
+        "sudo -E git add .",
+        "nice git add -A",
     ],
 )
 def test_blocks_staging_everything(command):
@@ -74,6 +89,8 @@ def test_blocks_staging_everything(command):
         "ls *",
         "",
         "bash -c 'git add docs/a.md'",
+        "sudo -u root git add docs/a.md",
+        "bash -lc 'git status'",
         # Second review: unbalanced quotes in unrelated commands must not be blocked
         "cat > notes.md <<'EOF'\nit's done\nEOF",
         "echo it's fine",
