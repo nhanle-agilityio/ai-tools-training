@@ -1,0 +1,35 @@
+name: CI
+
+# Tests and lint on every PR and on pushes to the main working branch.
+
+on:
+  pull_request:
+  push:
+    branches: [feature/example_taskboard]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: App tests
+        run: pytest
+
+      - name: Hook tests
+        run: pytest .claude/hooks/test_block_git_add_all.py
+
+      - name: Lint
+        run: ruff check . && ruff format --check .
