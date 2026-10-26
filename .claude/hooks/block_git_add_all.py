@@ -11,8 +11,8 @@ looked through. If shlex can't parse the command (an apostrophe in a heredoc),
 a regex on the raw text decides instead, so unrelated commands are not blocked.
 
 This guards against habit, not against evasion. Known gaps: `$(...)` inside
-double quotes, `eval`, other interpreters (`python -c`), and long wrapper options
-with a separate value (`sudo --user root`). Runs on the system python3 (3.9).
+double quotes, `eval`, and other interpreters (`python -c`). Runs on the system
+python3 (3.9).
 """
 
 import json
@@ -20,23 +20,17 @@ import re
 import shlex
 import sys
 
-OPERATORS = {";", "&", "&&", "|", "||", "(", ")"}
-# Wrapper commands, each with its own short options that take a separate value
-# (`sudo -u root`, `nice -n 5`). Per wrapper, because `-s` takes a value for xargs
-# but not for sudo.
-WRAPPERS = {
-    "env": {"-u", "-C", "-S", "-P"},
-    "sudo": {"-u", "-g", "-h", "-p", "-U", "-C", "-D", "-r", "-t", "-T"},
-    "command": set(),
-    "nice": {"-n"},
-    "xargs": {"-I", "-L", "-n", "-P", "-s", "-d", "-E", "-a"},
-    "time": {"-f", "-o"},
-}
-SHELLS = {"bash", "sh", "zsh"}
+OPERATORS = frozenset({";", "&", "&&", "|", "||", "(", ")"})
+# Commands that run another command. Their own options vary by tool and platform
+# (GNU vs BSD xargs), so instead of parsing them the hook checks every later token
+# that starts a git or shell command.
+WRAPPERS = frozenset({"env", "sudo", "command", "nice", "xargs", "time"})
+SHELLS = frozenset({"bash", "sh", "zsh"})
 SHELL_COMMAND_FLAG = re.compile(r"-[a-zA-Z]*c[a-zA-Z]*")  # -c, -lc, -ec
+SHELL_OPTIONS_WITH_VALUE = frozenset({"-o", "+o", "-O", "+O"})  # bash -o pipefail -c '...'
 # Git options before the subcommand that take a separate value (`git -C dir add`).
-GIT_OPTIONS_WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env"}
-STAGE_ALL_ARGS = {"-A", "--all", ".", "./", ":/"}
+GIT_OPTIONS_WITH_VALUE = frozenset({"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env"})
+STAGE_ALL_ARGS = frozenset({"-A", "--all", ".", "./", ":/"})
 # Fallback for commands shlex can't parse: `git ... add ... <stage-all arg>` on one line.
 STAGE_ALL_RE = re.compile(
     r"""\bgit\b[^\n;&|]*?\sadd\b[^\n;&|]*?\s["']?(-A|--all|-\w*A\w*|\./?|:/)["']?(\s|$)"""
@@ -59,32 +53,47 @@ def segments(command):
     yield segment
 
 
-def option_width(flag, takes_value):
-    """How many tokens a wrapper option uses, getopt style.
+def through_wrapper(tokens):
+    """True if any command run by the wrapper `tokens[0]` stages everything.
 
-    `-E` is 1. `-u root` is 2. In a group the first flag that takes a value ends it:
-    `-Eu root` is 2, while `-uroot` is 1 because the rest of the token is the value.
+    Checks each later `git` or shell token, so `sudo -u root git add .`, `xargs -J % git add .`
+    and `sudo -u git git add .` are all caught without knowing the wrapper's options.
+    `env -S 'git add .'` passes the command as one string, so that value is split too.
     """
-    if flag.startswith("--"):
-        return 1
-    for i, char in enumerate(flag[1:], start=1):
-        if "-" + char in takes_value:
-            return 2 if i == len(flag) - 1 else 1
-    return 1
+    for i in range(1, len(tokens)):
+        if (tokens[i] == "git" or tokens[i] in SHELLS) and stages_everything(tokens[i:]):
+            return True
+        split_string = tokens[0] == "env" and tokens[i - 1] in ("-S", "--split-string")
+        if split_string and any(stages_everything(t) for t in segments(tokens[i])):
+            return True
+    return False
+
+
+def through_shell(tokens):
+    """True if `bash -c '<command>'` (or -lc, -e -c, -c -- ...) runs a command that stages everything.
+
+    Only options before the first operand count: in `bash script.sh -c x`, `-c` is the script's.
+    """
+    i = 1
+    while i < len(tokens) and tokens[i][:1] in ("-", "+"):
+        if SHELL_COMMAND_FLAG.fullmatch(tokens[i]):
+            i += 2 if i + 1 < len(tokens) and tokens[i + 1] == "--" else 1
+            return i < len(tokens) and any(stages_everything(t) for t in segments(tokens[i]))
+        i += 2 if tokens[i] in SHELL_OPTIONS_WITH_VALUE else 1
+    return False
 
 
 def stages_everything(tokens):
     """True if the tokens are a `git ... add` call that stages the whole tree."""
-    while tokens and (tokens[0] in WRAPPERS or ("=" in tokens[0] and not tokens[0].startswith("-"))):
-        takes_value = WRAPPERS.get(tokens[0], set())
-        tokens = tokens[1:]  # a VAR=value assignment or a wrapper command
-        while tokens and tokens[0].startswith("-"):
-            tokens = tokens[option_width(tokens[0], takes_value) :]  # the wrapper's own flags
-    if tokens and tokens[0] in SHELLS:
-        for i, token in enumerate(tokens[1:-1], start=1):
-            if SHELL_COMMAND_FLAG.fullmatch(token):
-                return any(stages_everything(t) for t in segments(tokens[i + 1]))
-    if not tokens or tokens[0] != "git":
+    while tokens and "=" in tokens[0] and not tokens[0].startswith("-"):
+        tokens = tokens[1:]  # leading VAR=value assignments
+    if not tokens:
+        return False
+    if tokens[0] in WRAPPERS:
+        return through_wrapper(tokens)
+    if tokens[0] in SHELLS:
+        return through_shell(tokens)
+    if tokens[0] != "git":
         return False
 
     i = 1
