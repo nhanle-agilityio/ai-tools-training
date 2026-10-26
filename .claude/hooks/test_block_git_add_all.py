@@ -43,6 +43,13 @@ def run_hook(command):
         "git --git-dir=.git add -A",
         "GIT_TRACE=1 git add .",
         "git add -- .",
+        # Second review: wrappers
+        "bash -c 'git add -A'",
+        'sh -c "cd x && git add ."',
+        "env git add .",
+        "env -i git add -A",
+        "sudo git add .",
+        "command git add .",
     ],
 )
 def test_blocks_staging_everything(command):
@@ -66,13 +73,17 @@ def test_blocks_staging_everything(command):
         "git status",
         "ls *",
         "",
+        "bash -c 'git add docs/a.md'",
+        # Second review: unbalanced quotes in unrelated commands must not be blocked
+        "cat > notes.md <<'EOF'\nit's done\nEOF",
+        "echo it's fine",
     ],
 )
 def test_allows_other_commands(command):
     assert run_hook(command).returncode == 0
 
 
-def test_blocks_unparsable_command():
-    result = run_hook('git add "unclosed')
+def test_unparsable_command_falls_back_to_regex():
+    result = run_hook("git add . && echo it's done")
     assert result.returncode == 2
-    assert "could not parse" in result.stderr
+    assert "stage the files you changed by name" in result.stderr
