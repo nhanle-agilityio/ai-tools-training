@@ -90,7 +90,7 @@ Outside every ticket, so not fixed (CLAUDE.md: mention, don't fix). Verified wit
 | --- | --- | --- |
 | `/security-review` | On demand, one pass over the branch | Caught: High, confidence 9/10, two exploit paths, 0 false positives |
 | `security-guidance` plugin | Automatically while Claude edits | Missed (see below) |
-| `claude-security` plugin | On demand, multi-agent deep scan with patches | Read the docs, not run |
+| `claude-security` plugin | On demand, multi-agent deep scan with patches | Caught: CWE-89, confirmed 3/3 by a voting panel, rated Medium, 0 false positives |
 
 ### `/security-review`
 
@@ -125,11 +125,26 @@ stronger layer both times.
 
 ### `claude-security` plugin
 
-From the docs: `/plugin install claude-security@claude-plugins-official`, then `/claude-security`. A
-multi-agent scan that maps the architecture, builds a threat model, hunts, and has independent agents
-verify each finding. It scans a whole repository or a diff at low, medium or high effort and writes
-Markdown, JSONL and SARIF. It can draft patches but never applies them. A separate managed product with
-the same name is Enterprise-only.
+`/plugin install claude-security@claude-plugins-official`, then `/claude-security`. A multi-agent scan
+that maps the architecture, builds a threat model, hunts, and has independent agents verify each
+finding. It scans a whole repository or a diff at low, medium or high effort. It can draft patches but
+never applies them. A separate managed product with the same name is Enterprise-only.
+
+We ran `/claude-security scan commit 7977e51` at medium. Naming the commit kept the scope to 5 files and
+51 lines, avoiding ultrareview's `main` mistake.
+
+- **Same answer as `/security-review`:** one finding, S1, tagged CWE-89, and nothing for S2 to S7. It
+  said the bulk-complete feature had no security problem and that other bug classes were out of scope.
+- **More process:** two researchers, then a three-voter panel; all three confirmed. The run is stamped
+  with the exact commit, effort and verification state, and results come as Markdown, JSONL and SARIF
+  (for GitHub code scanning). The results folder has its own `.gitignore`; `git status` stayed clean.
+- **Severity disagreement:** the researchers rated it High, the panel rated it Medium. `/security-review`
+  said High. An unauthenticated read of every table is High to us; AI severity is a suggestion and a
+  person decides.
+- About 2m46s in total, against about 2m for `/security-review`.
+
+On a small diff the plugin adds audit trail, not findings. Its threat model and agent fan-out would
+matter on a full-repository scan, which we did not run because of the cost.
 
 ## For the retro
 
@@ -141,6 +156,8 @@ were nits (commit convention, `frozenset`).
 - Ultrareview missed the fake-green test (S5).
 - `security-guidance` missed S1 in a refactor, and its per-edit check was sidestepped by `sed`.
 - Day 9's third `@claude` round had one claim that did not reproduce (regex false positive).
+- Severity is not consistent: the same SQL injection was rated High by `/security-review` and Medium by
+  the `claude-security` panel.
 
 **False positives from our own tooling** (the hook, not a reviewer):
 
@@ -162,5 +179,6 @@ were nits (commit convention, `frozenset`).
 | --- | --- |
 | Before every PR, small diff | `/code-review` (seconds, free) |
 | Diff touches input handling, SQL, auth | add `/security-review` |
-| Large or risky area, or code no one has reviewed in a while | ultrareview or `claude-security` (minutes, paid) |
+| Large or risky area, or code no one has reviewed in a while | ultrareview or a full `claude-security` scan (minutes, paid) |
+| Security findings that need an audit trail or SARIF | `claude-security` |
 | On the PR | CI for tests, `@claude` for one review |
