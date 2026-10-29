@@ -89,7 +89,16 @@ def test_create_comment_on_task_of_deleted_project(client, project, make_task):
     assert resp.get_json()["error"] == f"task {task['id']} not found"
 
 
-def test_create_comment_does_not_touch_task_updated_at(client, make_task):
+def test_create_comment_does_not_touch_task_updated_at(client, make_task, monkeypatch):
+    from datetime import datetime
+
     task = make_task()
+
+    class LaterDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2030, 1, 2, 3, 4, 5)
+
+    monkeypatch.setattr("taskboard.services.datetime", LaterDatetime)
     client.post(f"/tasks/{task['id']}/comments", json={"author": "Lan", "body": "Hi"})
     assert client.get(f"/tasks/{task['id']}").get_json()["updated_at"] == task["updated_at"]
