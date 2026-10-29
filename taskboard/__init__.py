@@ -5,7 +5,7 @@ import os
 from flask import Flask, jsonify
 
 from . import db
-from .errors import NotFoundError, ValidationError
+from .errors import ConflictError, NotFoundError, ValidationError
 
 
 def create_app(test_config=None):
@@ -33,6 +33,10 @@ def create_app(test_config=None):
     @app.errorhandler(NotFoundError)
     def handle_not_found(err):
         return jsonify(error=str(err)), 404
+
+    @app.errorhandler(ConflictError)
+    def handle_conflict(err):
+        return jsonify(error=str(err)), 409
 
     @app.get("/health")
     def health():

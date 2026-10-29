@@ -4,7 +4,7 @@ import math
 from datetime import datetime
 
 from . import repository
-from .errors import NotFoundError, ValidationError
+from .errors import ConflictError, NotFoundError, ValidationError
 from .validators import (
     VALID_STATUSES,
     validate_due_date,
@@ -27,7 +27,7 @@ def _now():
 def create_project(db, data):
     fields = validate_project(data)
     if repository.get_project_by_name(db, fields["name"]) is not None:
-        raise ValidationError("a project with this name already exists")
+        raise ConflictError("a project with this name already exists")
     project_id = repository.insert_project(db, fields["name"], fields["description"], _now())
     return get_project(db, project_id)
 
