@@ -337,3 +337,9 @@ def test_task_due_yesterday_is_overdue(client, make_task, frozen_now):
     assert client.get(f"/tasks/{task['id']}").get_json()["is_overdue"] is True
     items = client.get("/tasks/overdue").get_json()["items"]
     assert [t["id"] for t in items] == [task["id"]]
+
+
+def test_task_responses_hide_deleted_at(client, make_task):
+    task = make_task()
+    assert "deleted_at" not in task
+    assert "deleted_at" not in client.get(f"/tasks/{task['id']}").get_json()

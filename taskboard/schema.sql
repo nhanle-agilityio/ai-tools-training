@@ -4,9 +4,11 @@ DROP TABLE IF EXISTS projects;
 
 CREATE TABLE projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    deleted_at TEXT
 );
 
 CREATE TABLE tasks (
@@ -18,7 +20,8 @@ CREATE TABLE tasks (
     priority TEXT NOT NULL DEFAULT 'medium',
     due_date TEXT,
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    deleted_at TEXT
 );
 
 CREATE TABLE task_tags (
@@ -27,4 +30,5 @@ CREATE TABLE task_tags (
     PRIMARY KEY (task_id, tag)
 );
 
+CREATE UNIQUE INDEX idx_projects_live_name ON projects (name) WHERE deleted_at IS NULL;
 CREATE INDEX idx_tasks_project ON tasks (project_id);

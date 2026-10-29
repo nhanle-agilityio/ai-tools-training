@@ -86,3 +86,30 @@ def test_project_stats_in_progress_rate(client, project, make_task):
 
     stats = client.get(f"/projects/{project['id']}/stats").get_json()
     assert stats["in_progress_rate"] == 33.3
+
+
+def test_create_project_sets_updated_at_equal_to_created_at(client):
+    resp = client.post("/projects", json={"name": "A"})
+    assert resp.status_code == 201
+    project = resp.get_json()
+    assert project["updated_at"] == project["created_at"]
+    assert "deleted_at" not in project
+
+
+def test_read_projects_return_updated_at_and_hide_deleted_at(client, project):
+    single = client.get(f"/projects/{project['id']}").get_json()
+    listed = client.get("/projects").get_json()["items"][0]
+    for body in (single, listed):
+        assert body["updated_at"] == body["created_at"]
+        assert "deleted_at" not in body
+
+
+def test_project_name_unique_index_is_partial_on_live_rows(app):
+    from taskboard.db import get_db
+
+    with app.app_context():
+        sql = (
+            get_db().execute("SELECT sql FROM sqlite_master WHERE name = 'idx_projects_live_name'").fetchone()
+        )
+    assert sql is not None
+    assert "UNIQUE" in sql[0] and "deleted_at IS NULL" in sql[0]
