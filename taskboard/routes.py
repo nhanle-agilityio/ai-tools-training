@@ -34,6 +34,12 @@ def update_project(project_id):
     return jsonify(services.update_project(get_db(), project_id, _json_body()))
 
 
+@bp.delete("/projects/<int:project_id>")
+def delete_project(project_id):
+    services.delete_project(get_db(), project_id)
+    return "", 204
+
+
 @bp.get("/projects/<int:project_id>/stats")
 def project_stats(project_id):
     return jsonify(services.project_stats(get_db(), project_id))
