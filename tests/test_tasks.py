@@ -343,3 +343,53 @@ def test_task_responses_hide_deleted_at(client, make_task):
     task = make_task()
     assert "deleted_at" not in task
     assert "deleted_at" not in client.get(f"/tasks/{task['id']}").get_json()
+
+
+# --- soft delete ------------------------------------------------------------------
+
+
+def _db_row(app, sql, params=()):
+    from taskboard.db import get_db
+
+    with app.app_context():
+        return get_db().execute(sql, params).fetchall()
+
+
+def test_delete_task_keeps_row_and_tags(app, client, make_task):
+    task = make_task(tags=["a", "b"])
+    assert client.delete(f"/tasks/{task['id']}").status_code == 204
+    rows = _db_row(app, "SELECT deleted_at, updated_at FROM tasks WHERE id = ?", (task["id"],))
+    assert len(rows) == 1
+    assert rows[0]["deleted_at"] is not None
+    assert rows[0]["updated_at"] == task["updated_at"]
+    tags = _db_row(app, "SELECT tag FROM task_tags WHERE task_id = ? ORDER BY tag", (task["id"],))
+    assert [r["tag"] for r in tags] == ["a", "b"]
+
+
+def test_deleted_task_is_not_found(client, make_task):
+    task = make_task()
+    client.delete(f"/tasks/{task['id']}")
+    expected = {"error": f"task {task['id']} not found"}
+    for resp in (
+        client.get(f"/tasks/{task['id']}"),
+        client.patch(f"/tasks/{task['id']}", json={"title": "x"}),
+        client.delete(f"/tasks/{task['id']}"),
+    ):
+        assert resp.status_code == 404
+        assert resp.get_json() == expected
+
+
+def test_deleted_task_absent_from_list_and_total(client, make_task):
+    keep = make_task(title="keep")
+    gone = make_task(title="gone")
+    client.delete(f"/tasks/{gone['id']}")
+    body = client.get("/tasks").get_json()
+    assert [t["id"] for t in body["items"]] == [keep["id"]]
+    assert body["pagination"]["total"] == 1
+
+
+def test_deleted_task_absent_from_overdue(client, make_task):
+    task = make_task(due_date="2000-01-01")
+    assert [t["id"] for t in client.get("/tasks/overdue").get_json()["items"]] == [task["id"]]
+    client.delete(f"/tasks/{task['id']}")
+    assert client.get("/tasks/overdue").get_json()["items"] == []

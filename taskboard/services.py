@@ -136,7 +136,7 @@ def update_task(db, task_id, data):
 
 def delete_task(db, task_id):
     get_task(db, task_id)
-    repository.delete_task(db, task_id)
+    repository.delete_task(db, task_id, _now())
 
 
 def paginate(total, page, per_page):

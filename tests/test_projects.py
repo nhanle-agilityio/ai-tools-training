@@ -121,6 +121,15 @@ def test_project_name_unique_index_is_partial_on_live_rows(app):
     assert "UNIQUE" in sql[0] and "deleted_at IS NULL" in sql[0]
 
 
+def test_project_stats_exclude_deleted_tasks(client, project, make_task):
+    make_task(status="todo")
+    gone = make_task(status="done")
+    client.delete(f"/tasks/{gone['id']}")
+    stats = client.get(f"/projects/{project['id']}/stats").get_json()
+    assert stats["total"] == 1
+    assert stats["by_status"] == {"todo": 1, "in_progress": 0, "done": 0}
+
+
 @pytest.fixture
 def frozen_now(monkeypatch):
     from datetime import datetime
