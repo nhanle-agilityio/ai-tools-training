@@ -24,7 +24,13 @@ def test_create_project_requires_name(client):
 
 def test_project_names_are_unique(client, project):
     resp = client.post("/projects", json={"name": project["name"]})
-    assert resp.status_code == 400
+    assert resp.status_code == 409
+    assert resp.get_json() == {"error": "a project with this name already exists"}
+
+
+def test_duplicate_project_name_is_compared_after_strip(client, project):
+    resp = client.post("/projects", json={"name": f"  {project['name']}  "})
+    assert resp.status_code == 409
 
 
 def test_list_projects_sorted_by_name(client):
