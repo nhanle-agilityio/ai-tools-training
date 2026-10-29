@@ -36,7 +36,7 @@ def list_projects(db):
 
 def count_tasks_by_status(db, project_id):
     rows = db.execute(
-        "SELECT status, COUNT(*) AS n FROM tasks WHERE project_id = ? GROUP BY status",
+        "SELECT status, COUNT(*) AS n FROM tasks WHERE project_id = ? AND deleted_at IS NULL GROUP BY status",
         (project_id,),
     ).fetchall()
     return {row["status"]: row["n"] for row in rows}
@@ -68,7 +68,7 @@ def insert_task(db, fields, now):
 
 
 def get_task(db, task_id):
-    return db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+    return db.execute("SELECT * FROM tasks WHERE id = ? AND deleted_at IS NULL", (task_id,)).fetchone()
 
 
 def update_task(db, task_id, fields, now):
@@ -76,7 +76,7 @@ def update_task(db, task_id, fields, now):
         """
         UPDATE tasks
            SET title = ?, description = ?, status = ?, priority = ?, due_date = ?, updated_at = ?
-         WHERE id = ?
+         WHERE id = ? AND deleted_at IS NULL
         """,
         (
             fields["title"],
@@ -91,13 +91,13 @@ def update_task(db, task_id, fields, now):
     db.commit()
 
 
-def delete_task(db, task_id):
-    db.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+def delete_task(db, task_id, now):
+    db.execute("UPDATE tasks SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL", (now, task_id))
     db.commit()
 
 
 def _task_filters(project_id, status, q):
-    where, params = [], []
+    where, params = ["t.deleted_at IS NULL"], []
     if project_id is not None:
         where.append("t.project_id = ?")
         params.append(project_id)
@@ -107,7 +107,7 @@ def _task_filters(project_id, status, q):
     if q:
         where.append("(instr(lower(t.title), lower(?)) > 0 OR instr(lower(t.description), lower(?)) > 0)")
         params.extend([q, q])
-    clause = f"WHERE {' AND '.join(where)}" if where else ""
+    clause = f"WHERE {' AND '.join(where)}"
     return clause, params
 
 
@@ -123,7 +123,7 @@ def list_tasks(db, *, project_id=None, status=None, q=None, sort="created_at", l
 
 def list_open_tasks_with_due_date(db):
     return db.execute(
-        "SELECT * FROM tasks WHERE status != 'done' AND due_date IS NOT NULL ORDER BY due_date, id"
+        "SELECT * FROM tasks WHERE status != 'done' AND due_date IS NOT NULL AND deleted_at IS NULL ORDER BY due_date, id"
     ).fetchall()
 
 
