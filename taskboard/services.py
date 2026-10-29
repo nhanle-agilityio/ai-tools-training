@@ -11,6 +11,7 @@ from .validators import (
     validate_new_task,
     validate_priority,
     validate_project,
+    validate_project_update,
     validate_status,
     validate_tags,
     validate_title,
@@ -29,6 +30,17 @@ def create_project(db, data):
     if repository.get_project_by_name(db, fields["name"]) is not None:
         raise ConflictError("a project with this name already exists")
     project_id = repository.insert_project(db, fields["name"], fields["description"], _now())
+    return get_project(db, project_id)
+
+
+def update_project(db, project_id, data):
+    # Missing project (404) is checked before the body, as in update_task.
+    project = get_project(db, project_id)
+    fields = validate_project_update(data, project)
+    existing = repository.get_project_by_name(db, fields["name"])
+    if existing is not None and existing["id"] != project_id:
+        raise ConflictError("a project with this name already exists")
+    repository.update_project(db, project_id, fields["name"], fields["description"], _now())
     return get_project(db, project_id)
 
 

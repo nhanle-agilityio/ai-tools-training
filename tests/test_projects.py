@@ -119,3 +119,94 @@ def test_project_name_unique_index_is_partial_on_live_rows(app):
         )
     assert sql is not None
     assert "UNIQUE" in sql[0] and "deleted_at IS NULL" in sql[0]
+
+
+@pytest.fixture
+def frozen_now(monkeypatch):
+    from datetime import datetime
+
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2030, 1, 2, 3, 4, 5)
+
+    monkeypatch.setattr("taskboard.services.datetime", FrozenDatetime)
+    return "2030-01-02T03:04:05"
+
+
+def test_patch_project_name_updates_name_and_updated_at(client, project, frozen_now):
+    resp = client.patch(f"/projects/{project['id']}", json={"name": "New"})
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["name"] == "New"
+    assert body["description"] == project["description"]
+    assert body["updated_at"] == frozen_now
+    assert body["created_at"] == project["created_at"]
+    assert client.get(f"/projects/{project['id']}").get_json()["name"] == "New"
+
+
+def test_patch_project_description_only(client, project):
+    resp = client.patch(f"/projects/{project['id']}", json={"description": "D"})
+    assert resp.status_code == 200
+    assert resp.get_json()["description"] == "D"
+    assert resp.get_json()["name"] == project["name"]
+
+
+def test_patch_project_name_is_stripped(client, project):
+    resp = client.patch(f"/projects/{project['id']}", json={"name": "  New  "})
+    assert resp.status_code == 200
+    assert resp.get_json()["name"] == "New"
+
+
+def test_patch_project_empty_body_touches_updated_at(client, project, frozen_now):
+    resp = client.patch(f"/projects/{project['id']}", json={})
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["name"] == project["name"]
+    assert body["description"] == project["description"]
+    assert body["updated_at"] == frozen_now
+
+
+def test_patch_project_ignores_unknown_keys(client, project):
+    resp = client.patch(f"/projects/{project['id']}", json={"id": 99, "created_at": "x"})
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["id"] == project["id"]
+    assert body["created_at"] == project["created_at"]
+
+
+@pytest.mark.parametrize("name", ["", "  ", 5])
+def test_patch_project_invalid_name_returns_400(client, project, name):
+    resp = client.patch(f"/projects/{project['id']}", json={"name": name})
+    assert resp.status_code == 400
+    assert resp.get_json() == {"error": "name is required"}
+
+
+def test_patch_project_invalid_description_returns_400(client, project):
+    resp = client.patch(f"/projects/{project['id']}", json={"description": 5})
+    assert resp.status_code == 400
+    assert resp.get_json() == {"error": "description must be a string"}
+
+
+def test_patch_project_non_object_body_returns_400(client, project):
+    resp = client.patch(f"/projects/{project['id']}", json=[])
+    assert resp.status_code == 400
+    assert resp.get_json() == {"error": "request body must be a JSON object"}
+
+
+def test_patch_project_duplicate_name_returns_409(client, project):
+    other = client.post("/projects", json={"name": "Other"}).get_json()
+    resp = client.patch(f"/projects/{other['id']}", json={"name": f" {project['name']} "})
+    assert resp.status_code == 409
+    assert resp.get_json() == {"error": "a project with this name already exists"}
+
+
+def test_patch_project_with_own_name_returns_200(client, project):
+    resp = client.patch(f"/projects/{project['id']}", json={"name": project["name"]})
+    assert resp.status_code == 200
+
+
+def test_patch_missing_project_returns_404(client):
+    resp = client.patch("/projects/999", json={"name": "X"})
+    assert resp.status_code == 404
+    assert resp.get_json() == {"error": "project 999 not found"}
