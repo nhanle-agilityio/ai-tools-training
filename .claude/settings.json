@@ -1,4 +1,40 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git fetch:*)",
+      "Bash(git switch:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push -u github:*)",
+      "Bash(git branch:*)",
+      "Bash(git stash:*)",
+      "Bash(curl * http://127.0.0.1:5050/*)",
+      "Bash(.venv/bin/pytest:*)",
+      "Bash(.venv/bin/ruff check:*)",
+      "Bash(.venv/bin/ruff format --check:*)",
+      "Bash(make run:*)",
+      "mcp__claude_ai_github__*"
+    ],
+    "deny": [
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push * --force*)",
+      "Bash(git push * -f *)",
+      "Bash(git push * +*)",
+      "Bash(git push * main)",
+      "Bash(git push * *:main)",
+      "Bash(git push * develop)",
+      "Bash(git push * *:develop)",
+      "Bash(git push * feature/example_taskboard)",
+      "Bash(git push * *:feature/example_taskboard)",
+      "Bash(gh pr merge:*)",
+      "mcp__claude_ai_github__merge_pull_request",
+      "mcp__claude_ai_github__delete_repository"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
       {

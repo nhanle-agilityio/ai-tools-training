@@ -1,0 +1,28 @@
+{
+  "$schema": "./devflow.schema.json",
+  "github": { "owner": "nhanle-agilityio", "repo": "ai-tools-training", "remote": "github" },
+  "baseBranch": "feature/example_taskboard",
+  "protectedBranches": ["main", "develop"],
+  "branchPattern": "{type}/{issue}-{slug}",
+  "commitScope": "#{issue}",
+  "specDir": "docs/specs",
+  "labels": {
+    "ready": "agent:ready",
+    "inProgress": "agent:in-progress",
+    "review": "agent:review",
+    "blocked": "agent:blocked",
+    "e2e": "needs-e2e"
+  },
+  "checks": [
+    { "name": "test", "run": ".venv/bin/pytest" },
+    { "name": "hook-test", "run": ".venv/bin/pytest .claude/hooks/test_block_git_add_all.py" },
+    { "name": "lint", "run": ".venv/bin/ruff check ." },
+    { "name": "format", "run": ".venv/bin/ruff format --check ." }
+  ],
+  "verify": {
+    "modes": ["http", "browser"],
+    "devServer": { "run": "make run", "url": "http://127.0.0.1:5050", "readyTimeoutSec": 60 },
+    "browserTool": "playwright"
+  },
+  "nextTask": { "defaultLimit": 3, "maxFixRounds": 2, "maxReviewRounds": 2 }
+}
