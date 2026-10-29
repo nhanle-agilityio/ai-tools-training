@@ -24,6 +24,18 @@ def validate_project(data):
     return {"name": name.strip(), "description": description}
 
 
+def validate_project_update(data, project):
+    """Return the full name/description pair after applying a partial update."""
+    _require_object(data)
+    name = data.get("name", project["name"])
+    if not isinstance(name, str) or not name.strip():
+        raise ValidationError("name is required")
+    description = data.get("description", project["description"])
+    if not isinstance(description, str):
+        raise ValidationError("description must be a string")
+    return {"name": name.strip(), "description": description}
+
+
 def validate_title(title):
     if not isinstance(title, str) or not title.strip():
         raise ValidationError("title is required")

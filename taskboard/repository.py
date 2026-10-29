@@ -22,6 +22,14 @@ def insert_project(db, name, description, now):
     return cur.lastrowid
 
 
+def update_project(db, project_id, name, description, now):
+    db.execute(
+        "UPDATE projects SET name = ?, description = ?, updated_at = ? WHERE id = ?",
+        (name, description, now, project_id),
+    )
+    db.commit()
+
+
 def get_project(db, project_id):
     return db.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
 
