@@ -13,6 +13,9 @@ make setup | make test | make seed | make run    # run serves http://127.0.0.1:5
 .venv/bin/ruff check . && .venv/bin/ruff format --check .
 ```
 
+Remotes: `github` = GitHub (issues, PRs, devflow), `origin` = GitLab mirror. On a fresh clone from
+GitHub, add it: `git remote add github git@github.com:nhanle-agilityio/ai-tools-training.git`.
+
 ## Architecture (one-way, never skip a layer)
 
 routes.py (HTTP only) → services.py (logic, calls validators) → repository.py (all SQL) → db.py
