@@ -8,6 +8,7 @@ from .errors import ConflictError, NotFoundError, ValidationError
 from .validators import (
     VALID_STATUSES,
     validate_due_date,
+    validate_new_comment,
     validate_new_task,
     validate_priority,
     validate_project,
@@ -172,3 +173,14 @@ def list_tasks(db, *, project_id=None, status=None, q=None, sort="created_at", p
 def list_overdue_tasks(db, now=None):
     rows = repository.list_open_tasks_with_due_date(db)
     return [task for task in _serialize_tasks(db, rows) if is_overdue(task, now)]
+
+
+# --- comments -----------------------------------------------------------------
+
+
+def create_comment(db, task_id, data):
+    # Missing task (404) is checked before the body, as in update_task.
+    get_task(db, task_id)
+    fields = validate_new_comment(data)
+    comment_id = repository.insert_comment(db, task_id, fields["author"], fields["body"], _now())
+    return _public(repository.get_comment(db, comment_id))

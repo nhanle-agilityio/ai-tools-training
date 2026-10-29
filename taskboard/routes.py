@@ -92,3 +92,11 @@ def update_task(task_id):
 def delete_task(task_id):
     services.delete_task(get_db(), task_id)
     return "", 204
+
+
+# --- comments -----------------------------------------------------------------
+
+
+@bp.post("/tasks/<int:task_id>/comments")
+def create_comment(task_id):
+    return jsonify(services.create_comment(get_db(), task_id, _json_body())), 201
