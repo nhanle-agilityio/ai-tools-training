@@ -29,6 +29,11 @@ def get_project(project_id):
     return jsonify(services.get_project(get_db(), project_id))
 
 
+@bp.patch("/projects/<int:project_id>")
+def update_project(project_id):
+    return jsonify(services.update_project(get_db(), project_id, _json_body()))
+
+
 @bp.get("/projects/<int:project_id>/stats")
 def project_stats(project_id):
     return jsonify(services.project_stats(get_db(), project_id))
