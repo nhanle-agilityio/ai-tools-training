@@ -219,3 +219,99 @@ def test_patch_missing_project_returns_404(client):
     resp = client.patch("/projects/999", json={"name": "X"})
     assert resp.status_code == 404
     assert resp.get_json() == {"error": "project 999 not found"}
+
+
+# --- delete project ---------------------------------------------------------------
+
+
+def _deleted_at(app, table, row_id):
+    with app.app_context():
+        from taskboard.db import get_db
+
+        row = get_db().execute(f"SELECT deleted_at FROM {table} WHERE id = ?", (row_id,)).fetchone()
+        return row["deleted_at"]
+
+
+def test_delete_project_returns_204_and_soft_deletes_project_and_live_tasks(
+    app, client, project, make_task, frozen_now
+):
+    t1 = make_task(title="one")
+    t2 = make_task(title="two")
+    resp = client.delete(f"/projects/{project['id']}")
+    assert resp.status_code == 204
+    assert resp.data == b""
+    assert _deleted_at(app, "projects", project["id"]) == frozen_now
+    assert _deleted_at(app, "tasks", t1["id"]) == frozen_now
+    assert _deleted_at(app, "tasks", t2["id"]) == frozen_now
+
+
+def test_delete_project_keeps_earlier_task_deleted_at(app, client, project, make_task, monkeypatch):
+    from datetime import datetime
+
+    old = make_task(title="old")
+    live = make_task(title="live")
+
+    class Earlier(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2029, 1, 1, 0, 0, 0)
+
+    monkeypatch.setattr("taskboard.services.datetime", Earlier)
+    assert client.delete(f"/tasks/{old['id']}").status_code == 204
+
+    class Later(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2030, 1, 2, 3, 4, 5)
+
+    monkeypatch.setattr("taskboard.services.datetime", Later)
+    assert client.delete(f"/projects/{project['id']}").status_code == 204
+    assert _deleted_at(app, "tasks", old["id"]) == "2029-01-01T00:00:00"
+    assert _deleted_at(app, "tasks", live["id"]) == "2030-01-02T03:04:05"
+
+
+def test_deleted_project_returns_404_on_project_endpoints(client, project):
+    client.delete(f"/projects/{project['id']}")
+    pid = project["id"]
+    for resp in (
+        client.get(f"/projects/{pid}"),
+        client.patch(f"/projects/{pid}", json={"name": "X"}),
+        client.delete(f"/projects/{pid}"),
+        client.get(f"/projects/{pid}/stats"),
+    ):
+        assert resp.status_code == 404
+        assert resp.get_json() == {"error": f"project {pid} not found"}
+
+
+def test_deleted_project_absent_from_project_list(client, project):
+    client.delete(f"/projects/{project['id']}")
+    assert client.get("/projects").get_json()["items"] == []
+
+
+def test_deleted_project_tasks_are_hidden(client, project, make_task):
+    task = make_task(title="late", due_date="2000-01-01")
+    client.delete(f"/projects/{project['id']}")
+    assert client.get(f"/tasks/{task['id']}").status_code == 404
+    listing = client.get("/tasks").get_json()
+    assert listing["items"] == []
+    assert listing["pagination"]["total"] == 0
+    assert client.get("/tasks/overdue").get_json()["items"] == []
+
+
+def test_create_task_in_deleted_project_returns_404(client, project):
+    client.delete(f"/projects/{project['id']}")
+    resp = client.post("/tasks", json={"project_id": project["id"], "title": "T"})
+    assert resp.status_code == 404
+    assert resp.get_json() == {"error": f"project {project['id']} not found"}
+
+
+def test_deleted_project_name_can_be_reused(client, project):
+    client.delete(f"/projects/{project['id']}")
+    resp = client.post("/projects", json={"name": project["name"]})
+    assert resp.status_code == 201
+
+
+def test_delete_missing_project_returns_404(client):
+    resp = client.delete("/projects/999")
+    assert resp.status_code == 404
+    assert resp.get_json() == {"error": "project 999 not found"}
