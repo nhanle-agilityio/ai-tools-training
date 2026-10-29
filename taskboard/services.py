@@ -44,6 +44,11 @@ def update_project(db, project_id, data):
     return get_project(db, project_id)
 
 
+def delete_project(db, project_id):
+    get_project(db, project_id)
+    repository.delete_project(db, project_id, _now())
+
+
 def _public(row):
     """Convert a row to a dict without internal columns."""
     data = dict(row)

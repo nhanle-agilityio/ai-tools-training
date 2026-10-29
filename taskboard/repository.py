@@ -30,16 +30,25 @@ def update_project(db, project_id, name, description, now):
     db.commit()
 
 
+def delete_project(db, project_id, now):
+    """Soft-delete a project and its live tasks in one transaction."""
+    db.execute("UPDATE projects SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL", (now, project_id))
+    db.execute(
+        "UPDATE tasks SET deleted_at = ? WHERE project_id = ? AND deleted_at IS NULL", (now, project_id)
+    )
+    db.commit()
+
+
 def get_project(db, project_id):
-    return db.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+    return db.execute("SELECT * FROM projects WHERE id = ? AND deleted_at IS NULL", (project_id,)).fetchone()
 
 
 def get_project_by_name(db, name):
-    return db.execute("SELECT * FROM projects WHERE name = ?", (name,)).fetchone()
+    return db.execute("SELECT * FROM projects WHERE name = ? AND deleted_at IS NULL", (name,)).fetchone()
 
 
 def list_projects(db):
-    return db.execute("SELECT * FROM projects ORDER BY name").fetchall()
+    return db.execute("SELECT * FROM projects WHERE deleted_at IS NULL ORDER BY name").fetchall()
 
 
 def count_tasks_by_status(db, project_id):
