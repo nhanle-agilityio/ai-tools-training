@@ -15,8 +15,8 @@ SORT_CLAUSES = {
 
 def insert_project(db, name, description, now):
     cur = db.execute(
-        "INSERT INTO projects (name, description, created_at) VALUES (?, ?, ?)",
-        (name, description, now),
+        "INSERT INTO projects (name, description, created_at, updated_at) VALUES (?, ?, ?, ?)",
+        (name, description, now, now),
     )
     db.commit()
     return cur.lastrowid

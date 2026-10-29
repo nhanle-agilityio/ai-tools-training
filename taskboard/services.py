@@ -32,15 +32,22 @@ def create_project(db, data):
     return get_project(db, project_id)
 
 
+def _public(row):
+    """Convert a row to a dict without internal columns."""
+    data = dict(row)
+    data.pop("deleted_at", None)
+    return data
+
+
 def get_project(db, project_id):
     row = repository.get_project(db, project_id)
     if row is None:
         raise NotFoundError(f"project {project_id} not found")
-    return dict(row)
+    return _public(row)
 
 
 def list_projects(db):
-    return [dict(row) for row in repository.list_projects(db)]
+    return [_public(row) for row in repository.list_projects(db)]
 
 
 def _percentage(part, whole):
@@ -75,7 +82,7 @@ def _serialize_tasks(db, rows):
     tags = repository.get_tags(db, [row["id"] for row in rows])
     tasks = []
     for row in rows:
-        task = dict(row)
+        task = _public(row)
         task["tags"] = tags.get(row["id"], [])
         task["is_overdue"] = is_overdue(task)
         tasks.append(task)
