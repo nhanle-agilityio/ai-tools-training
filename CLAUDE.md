@@ -1,8 +1,9 @@
 # CLAUDE.md — TaskBoard
 
 Flask + SQLite task API used for Claude training. Not client code. It contains
-intentional bugs tracked in `docs/tickets/` (TB-xxx) — the ticket is the source
-of truth for expected behavior, not the current code.
+intentional bugs. Work is tracked as GitHub issues — the issue (and its spec in
+`docs/specs/`) is the source of truth for expected behavior, not the current code.
+`docs/tickets/` (TB-xxx) holds the original practice tickets.
 
 ## Commands
 
@@ -21,16 +22,17 @@ routes.py (HTTP only) → services.py (logic, calls validators) → repository.p
 
 ## Conventions
 
-- Everything committed is in English: code, docs, commits, MR descriptions.
-- Conventional Commits, scope = ticket id: `fix(TB-101): ...`, `test(TB-101): ...`.
-- Bug fixes: failing-test commit first, then the fix, as separate small commits.
-- Branches: `fix/TB-xxx-short-desc` from `feature/example_taskboard`; MRs target it.
+- Everything committed is in English: code, docs, commits, PR descriptions.
+- Conventional Commits, scope = issue number: `fix(#12): ...`, `test(#12): ...`.
+- Bug fixes and features: failing-test commit first, then the implementation, as separate small commits.
+- Branches: `{type}/<issue>-<slug>` (e.g. `fix/12-due-today-not-overdue`) from `feature/example_taskboard`;
+  PRs target it.
 - Tests go through the HTTP layer with the `client` / `project` / `make_task` fixtures.
 - A hook runs `ruff format` (line length 110) on every edited .py file — don't fight its output.
 
 ## Never
 
 - Never `git add -A` / `git add .` — stage the files you changed by name.
-- Never fix or refactor outside the ticket you were asked about; mention it instead.
-- Never edit a ticket's acceptance criteria to make a test pass.
-- Never decide an ambiguous requirement silently — ask, or state it as an assumption in the MR.
+- Never fix or refactor outside the issue you were asked about; mention it instead.
+- Never edit an issue's acceptance criteria to make a test pass.
+- Never decide an ambiguous requirement silently — ask, or state it as an assumption in the PR.

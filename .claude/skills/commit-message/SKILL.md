@@ -46,7 +46,7 @@ Optional body explaining what changed and why, wrapped at ~72 columns.
 - `type` — one of: `feat` (new behavior), `fix` (bug fix), `refactor` (no
   behavior change), `test`, `docs`, `chore`, `perf`, `build`, `ci`, `style`.
   Pick by the *dominant intent* of the diff, not by which file changed most.
-- `scope` — the ticket ID when the work maps to one (e.g. `TB-104`), otherwise the
+- `scope` — the GitHub issue number when the work maps to one (e.g. `#14`), otherwise the
   module or domain touched (`stats`, `tasks`, `validators`, `db`). Omit the
   parentheses entirely if there's no meaningful scope.
 - `subject` — imperative mood ("add", "fix", "return"), lowercase start, no
@@ -60,8 +60,8 @@ non-obvious trade-off, a conflict resolution. Explain the reasoning and any
 consequences, not a line-by-line restatement of the diff. Skip the body for small,
 self-explanatory changes; a good subject alone is fine there.
 
-If the change relates to a ticket, reference it either in the scope (`fix(TB-104):`)
-or in the body (`Closes TB-104`).
+If the change relates to an issue, reference it either in the scope (`fix(#14):`)
+or in the body (`Closes #14`).
 
 ## Hard constraints for this repo
 
@@ -83,7 +83,7 @@ the subject, one per body paragraph) or a heredoc, and still include no trailer.
 **Example 1 — small fix, subject only**
 Staged diff: completion rate returns a crash for projects with zero tasks.
 ```
-fix(TB-104): return 0 completion rate for projects without tasks
+fix(#14): return 0 completion rate for projects without tasks
 ```
 
 **Example 2 — feature with a body that explains why**
@@ -102,9 +102,9 @@ refactor(stats): extract percentage helper and add in_progress_rate
 
 **Example 4 — conflict resolution worth explaining**
 ```
-fix(TB-104): compute completion rate via shared percentage helper
+fix(#14): compute completion rate via shared percentage helper
 
-Resolve the merge conflict in services.py by moving the TB-104 fix into
+Resolve the merge conflict in services.py by moving the #14 fix into
 _percentage() so completion_rate and in_progress_rate both use true
 division, round to 1 decimal, and return 0 for projects without tasks.
 ```
