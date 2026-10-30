@@ -7,8 +7,8 @@ from . import repository
 from .errors import ConflictError, NotFoundError, ValidationError
 from .validators import (
     VALID_STATUSES,
-    validate_due_date,
     validate_comment_body,
+    validate_due_date,
     validate_new_comment,
     validate_new_task,
     validate_priority,
