@@ -1,3 +1,5 @@
+import sqlite3
+
 import pytest
 
 # --- create -------------------------------------------------------------------
@@ -391,3 +393,61 @@ def test_delete_comment_keeps_task_updated_at(client, make_task, monkeypatch):
     resp = client.delete(f"/comments/{comment['id']}")
     assert resp.status_code == 204
     assert client.get(f"/tasks/{task['id']}").get_json()["updated_at"] == task["updated_at"]
+
+
+# --- comment_count on tasks -----------------------------------------------------
+
+
+def test_create_task_has_zero_comment_count(make_task):
+    assert make_task()["comment_count"] == 0
+
+
+def test_get_task_comment_count_after_add_and_delete(client, make_task):
+    task = make_task()
+    first = _post_comment(client, task["id"], "One")
+    _post_comment(client, task["id"], "Two")
+    assert client.get(f"/tasks/{task['id']}").get_json()["comment_count"] == 2
+    client.delete(f"/comments/{first['id']}")
+    assert client.get(f"/tasks/{task['id']}").get_json()["comment_count"] == 1
+
+
+def test_patch_task_includes_comment_count(client, make_task):
+    task = make_task()
+    _post_comment(client, task["id"], "One")
+    resp = client.patch(f"/tasks/{task['id']}", json={"title": "Renamed"})
+    assert resp.get_json()["comment_count"] == 1
+
+
+def test_list_tasks_comment_count_per_task(client, make_task):
+    a, b, c = make_task(title="A"), make_task(title="B"), make_task(title="C")
+    _post_comment(client, a["id"], "1")
+    _post_comment(client, a["id"], "2")
+    _post_comment(client, b["id"], "3")
+    items = client.get("/tasks").get_json()["items"]
+    counts = {item["id"]: item["comment_count"] for item in items}
+    assert counts == {a["id"]: 2, b["id"]: 1, c["id"]: 0}
+
+
+def test_overdue_tasks_include_comment_count(client, make_task):
+    task = make_task(due_date="2000-01-01")
+    _post_comment(client, task["id"], "One")
+    items = client.get("/tasks/overdue").get_json()["items"]
+    assert [item["comment_count"] for item in items] == [1]
+
+
+def test_list_tasks_loads_comment_counts_in_one_query(app, client, make_task):
+    for index in range(3):
+        _post_comment(client, make_task(title=f"T{index}")["id"], "Hi")
+    statements = []
+    original = sqlite3.connect
+
+    def traced_connect(*args, **kwargs):
+        conn = original(*args, **kwargs)
+        conn.set_trace_callback(statements.append)
+        return conn
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(sqlite3, "connect", traced_connect)
+        assert client.get("/tasks").status_code == 200
+    comment_selects = [s for s in statements if "SELECT" in s.upper() and "task_comments" in s]
+    assert len(comment_selects) == 1
