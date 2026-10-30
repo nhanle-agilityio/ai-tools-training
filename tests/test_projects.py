@@ -315,3 +315,79 @@ def test_delete_missing_project_returns_404(client):
     resp = client.delete("/projects/999")
     assert resp.status_code == 404
     assert resp.get_json() == {"error": "project 999 not found"}
+
+
+# --- GET /projects/<id>/tags (T2) ---------------------------------------------
+
+
+def test_t2_1_project_tags_counts_and_order(client, project, make_task):
+    make_task(tags=["bug", "ui"])
+    make_task(tags=["bug"])
+    make_task(tags=["android", "bug"])
+
+    resp = client.get(f"/projects/{project['id']}/tags")
+    assert resp.status_code == 200
+    assert resp.get_json() == {
+        "items": [
+            {"tag": "bug", "task_count": 3},
+            {"tag": "android", "task_count": 1},
+            {"tag": "ui", "task_count": 1},
+        ]
+    }
+
+
+def test_t2_6_project_tags_count_done_tasks(client, project, make_task):
+    make_task(tags=["bug"], status="todo")
+    make_task(tags=["bug"], status="done")
+
+    body = client.get(f"/projects/{project['id']}/tags").get_json()
+    assert body["items"] == [{"tag": "bug", "task_count": 2}]
+
+
+def test_t2_7_project_tags_ignore_deleted_tasks(client, project, make_task):
+    make_task(tags=["bug"])
+    deleted = make_task(tags=["bug", "legacy"])
+    assert client.delete(f"/tasks/{deleted['id']}").status_code == 204
+
+    body = client.get(f"/projects/{project['id']}/tags").get_json()
+    assert body["items"] == [{"tag": "bug", "task_count": 1}]
+
+
+def test_t2_9_project_tags_ignore_other_projects(client, project, make_task):
+    other = client.post("/projects", json={"name": "Other"}).get_json()
+    make_task(tags=["bug"])
+    client.post("/tasks", json={"project_id": other["id"], "title": "x", "tags": ["bug"]})
+    client.post("/tasks", json={"project_id": other["id"], "title": "y", "tags": ["other"]})
+
+    body = client.get(f"/projects/{project['id']}/tags").get_json()
+    assert body["items"] == [{"tag": "bug", "task_count": 1}]
+
+
+def test_t2_10_project_tags_empty_project(client, project):
+    resp = client.get(f"/projects/{project['id']}/tags")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"items": []}
+
+
+def test_t2_11_project_tags_untagged_tasks_only(client, project, make_task):
+    make_task()
+    make_task()
+
+    resp = client.get(f"/projects/{project['id']}/tags")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"items": []}
+
+
+def test_t2_12_project_tags_missing_project(client):
+    resp = client.get("/projects/999/tags")
+    assert resp.status_code == 404
+    assert resp.get_json() == {"error": "project 999 not found"}
+
+
+def test_t2_13_project_tags_deleted_project(client, project, make_task):
+    make_task(tags=["bug"])
+    assert client.delete(f"/projects/{project['id']}").status_code == 204
+
+    resp = client.get(f"/projects/{project['id']}/tags")
+    assert resp.status_code == 404
+    assert resp.get_json() == {"error": f"project {project['id']} not found"}
