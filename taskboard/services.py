@@ -184,3 +184,8 @@ def create_comment(db, task_id, data):
     fields = validate_new_comment(data)
     comment_id = repository.insert_comment(db, task_id, fields["author"], fields["body"], _now())
     return _public(repository.get_comment(db, comment_id))
+
+
+def list_comments(db, task_id):
+    get_task(db, task_id)
+    return [_public(row) for row in repository.list_comments(db, task_id)]
