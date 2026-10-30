@@ -181,7 +181,7 @@ No change. `task_tags (task_id, tag)` with primary key `(task_id, tag)` is enoug
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | T1 | Filter GET /tasks by one or more tags | feat | backend | - | M | no | low | Additive, read-only query param; no stored data changes |
 | T2 | List a project's tags with task counts | feat | backend | - | S | no | low | New read-only endpoint |
-| T3 | Remove a tag from all live tasks of a project | feat | backend | T1 | M | no | high | Deletes stored data (`task_tags` rows) in bulk |
+| T3 | Remove a tag from all live tasks of a project | feat | backend | T1, T2 | M | no | high | Deletes stored data (`task_tags` rows) in bulk |
 
 ### T1: Filter GET /tasks by one or more tags
 
@@ -253,7 +253,7 @@ No change. `task_tags (task_id, tag)` with primary key `(task_id, tag)` is enoug
 
 - **Type:** feat
 - **Area:** backend
-- **Depends on:** T1 (shared tag value helper in `validators.py`)
+- **Depends on:** T1 (shared tag value helper in `validators.py`), T2 (tests T3.2 and T3.6 read `GET /projects/<id>/tags`)
 - **Size:** M
 - **Needs e2e:** no
 - **Risk:** high - deletes stored data (`task_tags` rows) in bulk
@@ -367,8 +367,8 @@ comment `# T1.31`.
 | T3.13 | T3 | `ui%2Fux` removes `ui/ux` | edge | Given A `[bug]`, B `[bug/]` / When `DELETE /projects/<P>/tags/bug/` / Then `{"tag":"bug/","removed_from":1}`; A.tags `["bug"]` | http | should |
 | T3.14 | T3 | Retry → 404 | error | Given A `[bug]`; first `DELETE /projects/<P>/tags/bug` returns 200 / When the same DELETE again / Then 404 `tag bug not found in project <P numeric id>` | http | must |
 | T3.15 | T3 | Tag only on deleted tasks → 404 | error | Given P: D `[bug]` soft-deleted, A `[ui]` live / When DELETE bug / Then 404 `tag bug not found in project <P>`; DB row `(D, 'bug')` still present | integration | must |
-| T3.16 | T3 | Tag only on deleted tasks → 404 | edge | Given `bug` only on a task of project Q / When `DELETE /projects/<P>/tags/bug` / Then 404 `tag bug not found in project <P>`; Q's task keeps `["bug"]` | http | should |
-| T3.17 | T3 | Tag only on deleted tasks → 404 | edge | Given P with no tasks / When `DELETE /projects/<P>/tags/%20NoPe%20` / Then 404 `tag nope not found in project <P>` (normalised in message) | http | should |
+| T3.16 | T3 | Tag only in another project → 404 | edge | Given `bug` only on a task of project Q / When `DELETE /projects/<P>/tags/bug` / Then 404 `tag bug not found in project <P>`; Q's task keeps `["bug"]` | http | should |
+| T3.17 | T3 | Unknown tag → 404 with normalised tag | edge | Given P with no tasks / When `DELETE /projects/<P>/tags/%20NoPe%20` / Then 404 `tag nope not found in project <P>` (normalised in message) | http | should |
 | T3.18 | T3 | `%20` → 400 | error | Given live P / When `DELETE /projects/<P>/tags/%20` / Then 400 `tag must not be empty` | http | must |
 | T3.19 | T3 | `%20` → 400 | edge | When `DELETE /projects/<P>/tags/%20%09%20` / Then 400 `tag must not be empty` | http | should |
 | T3.20 | T3 | 404 missing or deleted project | error | When `DELETE /projects/999/tags/bug` / Then 404 `project 999 not found` | http | must |
