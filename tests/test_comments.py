@@ -319,3 +319,66 @@ def test_list_comments_on_task_of_deleted_project(client, project, make_task):
     resp = client.get(f"/tasks/{task['id']}/comments")
     assert resp.status_code == 404
     assert resp.get_json()["error"] == f"task {task['id']} not found"
+
+
+# --- delete -------------------------------------------------------------------
+
+
+def _comment_row(app, comment_id):
+    from taskboard.db import get_db
+
+    with app.app_context():
+        return get_db().execute("SELECT * FROM task_comments WHERE id = ?", (comment_id,)).fetchone()
+
+
+def test_delete_comment(app, client, make_task):
+    task = make_task()
+    comment = _post_comment(client, task["id"], "Hi")
+    resp = client.delete(f"/comments/{comment['id']}")
+    assert resp.status_code == 204
+    assert resp.data == b""
+    row = _comment_row(app, comment["id"])
+    assert row is not None
+    assert row["deleted_at"] is not None
+
+
+def test_deleted_comment_is_gone_for_get_patch_delete(client, make_task):
+    task = make_task()
+    comment = _post_comment(client, task["id"], "Hi")
+    client.delete(f"/comments/{comment['id']}")
+    url = f"/comments/{comment['id']}"
+    for resp in (client.get(url), client.patch(url, json={"body": "x"}), client.delete(url)):
+        assert resp.status_code == 404
+        assert resp.get_json()["error"] == f"comment {comment['id']} not found"
+
+
+def test_deleted_comment_not_listed_others_stay(client, make_task):
+    task = make_task()
+    first = _post_comment(client, task["id"], "A")
+    _post_comment(client, task["id"], "B")
+    client.delete(f"/comments/{first['id']}")
+    items = client.get(f"/tasks/{task['id']}/comments").get_json()["items"]
+    assert [c["body"] for c in items] == ["B"]
+
+
+def test_delete_missing_comment(client):
+    resp = client.delete("/comments/999")
+    assert resp.status_code == 404
+    assert resp.get_json()["error"] == "comment 999 not found"
+
+
+def test_delete_comment_on_deleted_task(client, make_task):
+    task = make_task()
+    comment = _post_comment(client, task["id"], "Hi")
+    client.delete(f"/tasks/{task['id']}")
+    resp = client.delete(f"/comments/{comment['id']}")
+    assert resp.status_code == 404
+    assert resp.get_json()["error"] == f"comment {comment['id']} not found"
+
+
+def test_delete_comment_keeps_task_updated_at(client, make_task):
+    task = make_task()
+    comment = _post_comment(client, task["id"], "Hi")
+    before = client.get(f"/tasks/{task['id']}").get_json()["updated_at"]
+    client.delete(f"/comments/{comment['id']}")
+    assert client.get(f"/tasks/{task['id']}").get_json()["updated_at"] == before
