@@ -376,9 +376,18 @@ def test_delete_comment_on_deleted_task(client, make_task):
     assert resp.get_json()["error"] == f"comment {comment['id']} not found"
 
 
-def test_delete_comment_keeps_task_updated_at(client, make_task):
+def test_delete_comment_on_deleted_project(client, project, make_task):
+    comment = _new_comment(client, make_task())
+    client.delete(f"/projects/{project['id']}")
+    resp = client.delete(f"/comments/{comment['id']}")
+    assert resp.status_code == 404
+    assert resp.get_json()["error"] == f"comment {comment['id']} not found"
+
+
+def test_delete_comment_keeps_task_updated_at(client, make_task, monkeypatch):
     task = make_task()
-    comment = _post_comment(client, task["id"], "Hi")
-    before = client.get(f"/tasks/{task['id']}").get_json()["updated_at"]
-    client.delete(f"/comments/{comment['id']}")
-    assert client.get(f"/tasks/{task['id']}").get_json()["updated_at"] == before
+    comment = _new_comment(client, task)
+    _freeze_later_clock(monkeypatch)
+    resp = client.delete(f"/comments/{comment['id']}")
+    assert resp.status_code == 204
+    assert client.get(f"/tasks/{task['id']}").get_json()["updated_at"] == task["updated_at"]
