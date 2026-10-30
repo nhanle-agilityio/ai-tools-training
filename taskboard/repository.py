@@ -161,6 +161,23 @@ def get_tags(db, task_ids):
     return tags
 
 
+def count_comments(db, task_ids):
+    if not task_ids:
+        return {}
+    placeholders = ",".join("?" for _ in task_ids)
+    rows = db.execute(
+        f"""
+        SELECT task_id, COUNT(*) AS n FROM task_comments
+        WHERE task_id IN ({placeholders}) AND deleted_at IS NULL GROUP BY task_id
+        """,
+        list(task_ids),
+    ).fetchall()
+    counts = {task_id: 0 for task_id in task_ids}
+    for row in rows:
+        counts[row["task_id"]] = row["n"]
+    return counts
+
+
 def set_tags(db, task_id, tags):
     db.execute("DELETE FROM task_tags WHERE task_id = ?", (task_id,))
     db.executemany(
