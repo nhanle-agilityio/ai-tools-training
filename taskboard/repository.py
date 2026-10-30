@@ -198,3 +198,10 @@ def update_comment(db, comment_id, body, now):
         (body, now, comment_id),
     )
     db.commit()
+
+
+def list_comments(db, task_id):
+    return db.execute(
+        "SELECT * FROM task_comments WHERE task_id = ? AND deleted_at IS NULL ORDER BY created_at ASC, id ASC",
+        (task_id,),
+    ).fetchall()

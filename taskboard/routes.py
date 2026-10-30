@@ -110,3 +110,8 @@ def get_comment(comment_id):
 @bp.patch("/comments/<int:comment_id>")
 def update_comment(comment_id):
     return jsonify(services.update_comment(get_db(), comment_id, _json_body()))
+
+
+@bp.get("/tasks/<int:task_id>/comments")
+def list_comments(task_id):
+    return jsonify(items=services.list_comments(get_db(), task_id))

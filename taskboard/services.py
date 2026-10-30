@@ -202,3 +202,8 @@ def update_comment(db, comment_id, data):
     body = validate_comment_body(data["body"]) if "body" in data else comment["body"]
     repository.update_comment(db, comment_id, body, _now())
     return get_comment(db, comment_id)
+
+
+def list_comments(db, task_id):
+    get_task(db, task_id)
+    return [_public(row) for row in repository.list_comments(db, task_id)]
