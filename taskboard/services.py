@@ -98,12 +98,15 @@ def is_overdue(task, now=None):
 
 
 def _serialize_tasks(db, rows):
-    tags = repository.get_tags(db, [row["id"] for row in rows])
+    task_ids = [row["id"] for row in rows]
+    tags = repository.get_tags(db, task_ids)
+    comment_counts = repository.count_comments(db, task_ids)
     tasks = []
     for row in rows:
         task = _public(row)
         task["tags"] = tags.get(row["id"], [])
         task["is_overdue"] = is_overdue(task)
+        task["comment_count"] = comment_counts.get(row["id"], 0)
         tasks.append(task)
     return tasks
 
