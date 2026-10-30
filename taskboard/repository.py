@@ -168,3 +168,25 @@ def set_tags(db, task_id, tags):
         [(task_id, tag) for tag in tags],
     )
     db.commit()
+
+
+# --- comments -----------------------------------------------------------------
+
+
+def insert_comment(db, task_id, author, body, now):
+    cur = db.execute(
+        "INSERT INTO task_comments (task_id, author, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+        (task_id, author, body, now, now),
+    )
+    db.commit()
+    return cur.lastrowid
+
+
+def get_comment(db, comment_id):
+    return db.execute(
+        """
+        SELECT c.* FROM task_comments c JOIN tasks t ON t.id = c.task_id
+         WHERE c.id = ? AND c.deleted_at IS NULL AND t.deleted_at IS NULL
+        """,
+        (comment_id,),
+    ).fetchone()

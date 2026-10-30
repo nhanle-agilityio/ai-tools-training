@@ -6,6 +6,8 @@ VALID_STATUSES = ("todo", "in_progress", "done")
 VALID_PRIORITIES = ("low", "medium", "high")
 MAX_TITLE_LENGTH = 200
 MAX_TAGS = 10
+MAX_AUTHOR_LENGTH = 100
+MAX_COMMENT_BODY_LENGTH = 2000
 
 
 def _require_object(data):
@@ -97,6 +99,23 @@ def validate_new_task(data):
         "priority": validate_priority(data.get("priority", "medium")),
         "due_date": validate_due_date(data.get("due_date")),
         "tags": validate_tags(data.get("tags", [])),
+    }
+
+
+def _validate_text(value, name, max_length):
+    if not isinstance(value, str) or not value.strip():
+        raise ValidationError(f"{name} is required")
+    value = value.strip()
+    if len(value) > max_length:
+        raise ValidationError(f"{name} must be at most {max_length} characters")
+    return value
+
+
+def validate_new_comment(data):
+    _require_object(data)
+    return {
+        "author": _validate_text(data.get("author"), "author", MAX_AUTHOR_LENGTH),
+        "body": _validate_text(data.get("body"), "body", MAX_COMMENT_BODY_LENGTH),
     }
 
 
