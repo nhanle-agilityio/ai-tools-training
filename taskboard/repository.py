@@ -200,6 +200,11 @@ def update_comment(db, comment_id, body, now):
     db.commit()
 
 
+def delete_comment(db, comment_id, now):
+    db.execute("UPDATE task_comments SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL", (now, comment_id))
+    db.commit()
+
+
 def list_comments(db, task_id):
     return db.execute(
         "SELECT * FROM task_comments WHERE task_id = ? AND deleted_at IS NULL ORDER BY created_at ASC, id ASC",

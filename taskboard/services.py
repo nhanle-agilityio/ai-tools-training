@@ -204,6 +204,11 @@ def update_comment(db, comment_id, data):
     return get_comment(db, comment_id)
 
 
+def delete_comment(db, comment_id):
+    get_comment(db, comment_id)
+    repository.delete_comment(db, comment_id, _now())
+
+
 def list_comments(db, task_id):
     get_task(db, task_id)
     return [_public(row) for row in repository.list_comments(db, task_id)]
