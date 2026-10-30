@@ -11,7 +11,11 @@
     "inProgress": "agent:in-progress",
     "review": "agent:review",
     "blocked": "agent:blocked",
-    "e2e": "needs-e2e"
+    "e2e": "needs-e2e",
+    "devflow": "devflow",
+    "riskLow": "risk:low",
+    "riskHigh": "risk:high",
+    "stacked": "stacked"
   },
   "checks": [
     { "name": "test", "run": ".venv/bin/pytest" },
@@ -24,5 +28,23 @@
     "devServer": { "run": "make run", "url": "http://127.0.0.1:5050", "readyTimeoutSec": 60 },
     "browserTool": "playwright"
   },
+  "risk": {
+    "highWhen": [
+      "authentication or permissions",
+      "data migration or deleting stored data",
+      "a change to a public API contract that breaks existing clients",
+      "security-sensitive input handling",
+      "payments or money"
+    ],
+    "highPaths": ["taskboard/schema.sql", "taskboard/db.py", ".github/**", ".claude/**"]
+  },
+  "mergeGate": {
+    "enabled": true,
+    "dryRun": true,
+    "requiredChecks": ["test", "devflow/review"],
+    "method": "merge"
+  },
+  "testing": { "e2eFramework": false },
+  "spec": { "testMatrix": true, "qaModel": "opus" },
   "nextTask": { "defaultLimit": 3, "maxFixRounds": 2, "maxReviewRounds": 2 }
 }
