@@ -119,6 +119,10 @@ def validate_new_comment(data):
     }
 
 
+def validate_comment_body(value):
+    return _validate_text(value, "body", MAX_COMMENT_BODY_LENGTH)
+
+
 def parse_positive_int(value, name, default):
     if value is None:
         return default

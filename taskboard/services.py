@@ -7,6 +7,7 @@ from . import repository
 from .errors import ConflictError, NotFoundError, ValidationError
 from .validators import (
     VALID_STATUSES,
+    validate_comment_body,
     validate_due_date,
     validate_new_comment,
     validate_new_task,
@@ -184,6 +185,23 @@ def create_comment(db, task_id, data):
     fields = validate_new_comment(data)
     comment_id = repository.insert_comment(db, task_id, fields["author"], fields["body"], _now())
     return _public(repository.get_comment(db, comment_id))
+
+
+def get_comment(db, comment_id):
+    row = repository.get_comment(db, comment_id)
+    if row is None:
+        raise NotFoundError(f"comment {comment_id} not found")
+    return _public(row)
+
+
+def update_comment(db, comment_id, data):
+    # Missing comment (404) is checked before the body, as in update_task.
+    comment = get_comment(db, comment_id)
+    if not isinstance(data, dict):
+        raise ValidationError("request body must be a JSON object")
+    body = validate_comment_body(data["body"]) if "body" in data else comment["body"]
+    repository.update_comment(db, comment_id, body, _now())
+    return get_comment(db, comment_id)
 
 
 def list_comments(db, task_id):

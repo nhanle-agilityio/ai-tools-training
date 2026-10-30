@@ -104,6 +104,134 @@ def test_create_comment_does_not_touch_task_updated_at(client, make_task, monkey
     assert client.get(f"/tasks/{task['id']}").get_json()["updated_at"] == task["updated_at"]
 
 
+# --- read and edit a single comment -------------------------------------------
+
+
+def _new_comment(client, task, **overrides):
+    payload = {"author": "Lan", "body": "Hi", **overrides}
+    return client.post(f"/tasks/{task['id']}/comments", json=payload).get_json()
+
+
+def _freeze_later_clock(monkeypatch):
+    from datetime import datetime
+
+    class LaterDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2030, 1, 2, 3, 4, 5)
+
+    monkeypatch.setattr("taskboard.services.datetime", LaterDatetime)
+    return LaterDatetime.now().isoformat(timespec="seconds")
+
+
+def test_get_comment(client, make_task):
+    comment = _new_comment(client, make_task())
+    resp = client.get(f"/comments/{comment['id']}")
+    assert resp.status_code == 200
+    assert resp.get_json() == comment
+
+
+def test_get_comment_not_found(client):
+    resp = client.get("/comments/999")
+    assert resp.status_code == 404
+    assert resp.get_json()["error"] == "comment 999 not found"
+
+
+def test_patch_comment_body(client, make_task, monkeypatch):
+    comment = _new_comment(client, make_task())
+    later = _freeze_later_clock(monkeypatch)
+    resp = client.patch(f"/comments/{comment['id']}", json={"body": "New"})
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["body"] == "New"
+    assert data["author"] == "Lan"
+    assert data["updated_at"] == later
+    assert data["created_at"] == comment["created_at"]
+    assert client.get(f"/comments/{comment['id']}").get_json() == data
+
+
+def test_patch_comment_strips_body(client, make_task):
+    comment = _new_comment(client, make_task())
+    resp = client.patch(f"/comments/{comment['id']}", json={"body": "  New  "})
+    assert resp.status_code == 200
+    assert resp.get_json()["body"] == "New"
+
+
+def test_patch_comment_empty_object_touches_updated_at(client, make_task, monkeypatch):
+    comment = _new_comment(client, make_task())
+    later = _freeze_later_clock(monkeypatch)
+    resp = client.patch(f"/comments/{comment['id']}", json={})
+    assert resp.status_code == 200
+    assert resp.get_json()["body"] == comment["body"]
+    assert resp.get_json()["updated_at"] == later
+
+
+def test_patch_comment_ignores_other_fields(client, make_task):
+    comment = _new_comment(client, make_task())
+    payload = {"author": "X", "task_id": 99, "id": 5, "created_at": "x"}
+    resp = client.patch(f"/comments/{comment['id']}", json=payload)
+    assert resp.status_code == 200
+    data = resp.get_json()
+    for key in ("author", "task_id", "id", "created_at"):
+        assert data[key] == comment[key]
+
+
+@pytest.mark.parametrize("body", ["", "  ", 5])
+def test_patch_comment_body_required(client, make_task, body):
+    comment = _new_comment(client, make_task())
+    resp = client.patch(f"/comments/{comment['id']}", json={"body": body})
+    assert resp.status_code == 400
+    assert resp.get_json()["error"] == "body is required"
+
+
+def test_patch_comment_body_length(client, make_task):
+    comment = _new_comment(client, make_task())
+    resp = client.patch(f"/comments/{comment['id']}", json={"body": "b" * 2001})
+    assert resp.status_code == 400
+    assert resp.get_json()["error"] == "body must be at most 2000 characters"
+
+
+def test_patch_comment_non_object_body(client, make_task):
+    comment = _new_comment(client, make_task())
+    resp = client.patch(f"/comments/{comment['id']}", json=[])
+    assert resp.status_code == 400
+    assert resp.get_json()["error"] == "request body must be a JSON object"
+
+
+def test_patch_comment_missing_checked_before_body(client):
+    for payload in ({"body": "New"}, {"body": ""}, []):
+        resp = client.patch("/comments/999", json=payload)
+        assert resp.status_code == 404
+        assert resp.get_json()["error"] == "comment 999 not found"
+
+
+def test_comment_unreachable_after_task_delete(client, make_task):
+    task = make_task()
+    comment = _new_comment(client, task)
+    client.delete(f"/tasks/{task['id']}")
+    for call in (client.get, lambda url: client.patch(url, json={"body": "New"})):
+        resp = call(f"/comments/{comment['id']}")
+        assert resp.status_code == 404
+        assert resp.get_json()["error"] == f"comment {comment['id']} not found"
+
+
+def test_comment_unreachable_after_project_delete(client, project, make_task):
+    comment = _new_comment(client, make_task())
+    client.delete(f"/projects/{project['id']}")
+    for call in (client.get, lambda url: client.patch(url, json={"body": "New"})):
+        resp = call(f"/comments/{comment['id']}")
+        assert resp.status_code == 404
+        assert resp.get_json()["error"] == f"comment {comment['id']} not found"
+
+
+def test_patch_comment_does_not_touch_task_updated_at(client, make_task, monkeypatch):
+    task = make_task()
+    comment = _new_comment(client, task)
+    _freeze_later_clock(monkeypatch)
+    client.patch(f"/comments/{comment['id']}", json={"body": "New"})
+    assert client.get(f"/tasks/{task['id']}").get_json()["updated_at"] == task["updated_at"]
+
+
 # --- list ---------------------------------------------------------------------
 
 
