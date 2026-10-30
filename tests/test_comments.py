@@ -102,3 +102,92 @@ def test_create_comment_does_not_touch_task_updated_at(client, make_task, monkey
     monkeypatch.setattr("taskboard.services.datetime", LaterDatetime)
     client.post(f"/tasks/{task['id']}/comments", json={"author": "Lan", "body": "Hi"})
     assert client.get(f"/tasks/{task['id']}").get_json()["updated_at"] == task["updated_at"]
+
+
+# --- list ---------------------------------------------------------------------
+
+
+def _post_comment(client, task_id, body):
+    resp = client.post(f"/tasks/{task_id}/comments", json={"author": "Lan", "body": body})
+    assert resp.status_code == 201, resp.get_json()
+    return resp.get_json()
+
+
+def test_list_comments_empty(client, make_task):
+    task = make_task()
+    resp = client.get(f"/tasks/{task['id']}/comments")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"items": []}
+
+
+def test_list_comments_oldest_first(client, make_task, monkeypatch):
+    from datetime import datetime
+
+    task = make_task()
+    for day, body in ((1, "A"), (2, "B"), (3, "C")):
+
+        class FrozenDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None, _day=day):
+                return cls(2030, 1, _day, 0, 0, 0)
+
+        monkeypatch.setattr("taskboard.services.datetime", FrozenDatetime)
+        _post_comment(client, task["id"], body)
+    items = client.get(f"/tasks/{task['id']}/comments").get_json()["items"]
+    assert [c["body"] for c in items] == ["A", "B", "C"]
+
+
+def test_list_comments_same_created_at_ordered_by_id(client, make_task, monkeypatch):
+    from datetime import datetime
+
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2030, 1, 1, 0, 0, 0)
+
+    monkeypatch.setattr("taskboard.services.datetime", FrozenDatetime)
+    task = make_task()
+    created = [_post_comment(client, task["id"], body) for body in ("A", "B", "C")]
+    assert len({c["created_at"] for c in created}) == 1
+    items = client.get(f"/tasks/{task['id']}/comments").get_json()["items"]
+    assert [c["id"] for c in items] == sorted(c["id"] for c in created)
+
+
+def test_list_comments_only_own_task(client, make_task):
+    task = make_task()
+    other = make_task(title="Other")
+    _post_comment(client, task["id"], "mine")
+    _post_comment(client, other["id"], "theirs")
+    items = client.get(f"/tasks/{task['id']}/comments").get_json()["items"]
+    assert [c["body"] for c in items] == ["mine"]
+
+
+def test_list_comments_has_no_deleted_at(client, make_task):
+    task = make_task()
+    _post_comment(client, task["id"], "Hi")
+    items = client.get(f"/tasks/{task['id']}/comments").get_json()["items"]
+    assert set(items[0]) == {"id", "task_id", "author", "body", "created_at", "updated_at"}
+
+
+def test_list_comments_missing_task(client):
+    resp = client.get("/tasks/999/comments")
+    assert resp.status_code == 404
+    assert resp.get_json()["error"] == "task 999 not found"
+
+
+def test_list_comments_on_deleted_task(client, make_task):
+    task = make_task()
+    _post_comment(client, task["id"], "Hi")
+    client.delete(f"/tasks/{task['id']}")
+    resp = client.get(f"/tasks/{task['id']}/comments")
+    assert resp.status_code == 404
+    assert resp.get_json()["error"] == f"task {task['id']} not found"
+
+
+def test_list_comments_on_task_of_deleted_project(client, project, make_task):
+    task = make_task()
+    _post_comment(client, task["id"], "Hi")
+    client.delete(f"/projects/{project['id']}")
+    resp = client.get(f"/tasks/{task['id']}/comments")
+    assert resp.status_code == 404
+    assert resp.get_json()["error"] == f"task {task['id']} not found"

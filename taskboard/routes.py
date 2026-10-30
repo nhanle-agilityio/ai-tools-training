@@ -100,3 +100,8 @@ def delete_task(task_id):
 @bp.post("/tasks/<int:task_id>/comments")
 def create_comment(task_id):
     return jsonify(services.create_comment(get_db(), task_id, _json_body())), 201
+
+
+@bp.get("/tasks/<int:task_id>/comments")
+def list_comments(task_id):
+    return jsonify(items=services.list_comments(get_db(), task_id))
