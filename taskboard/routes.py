@@ -45,6 +45,11 @@ def project_stats(project_id):
     return jsonify(services.project_stats(get_db(), project_id))
 
 
+@bp.get("/projects/<int:project_id>/tags")
+def project_tags(project_id):
+    return jsonify(items=services.list_project_tags(get_db(), project_id))
+
+
 # --- tasks --------------------------------------------------------------------
 
 

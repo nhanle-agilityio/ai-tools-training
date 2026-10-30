@@ -161,6 +161,20 @@ def get_tags(db, task_ids):
     return tags
 
 
+def count_project_tags(db, project_id):
+    rows = db.execute(
+        """
+        SELECT tt.tag AS tag, COUNT(*) AS task_count
+          FROM task_tags tt JOIN tasks t ON t.id = tt.task_id
+         WHERE t.project_id = ? AND t.deleted_at IS NULL
+         GROUP BY tt.tag
+         ORDER BY task_count DESC, tt.tag ASC
+        """,
+        (project_id,),
+    ).fetchall()
+    return [{"tag": row["tag"], "task_count": row["task_count"]} for row in rows]
+
+
 def count_comments(db, task_ids):
     if not task_ids:
         return {}

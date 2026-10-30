@@ -88,6 +88,11 @@ def project_stats(db, project_id):
     }
 
 
+def list_project_tags(db, project_id):
+    get_project(db, project_id)
+    return repository.count_project_tags(db, project_id)
+
+
 # --- tasks --------------------------------------------------------------------
 
 
