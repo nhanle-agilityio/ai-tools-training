@@ -113,7 +113,7 @@ def delete_task(db, task_id, now):
     db.commit()
 
 
-def _task_filters(project_id, status, q):
+def _task_filters(project_id, status, q, tags=()):
     where, params = ["t.deleted_at IS NULL"], []
     if project_id is not None:
         where.append("t.project_id = ?")
@@ -124,12 +124,15 @@ def _task_filters(project_id, status, q):
     if q:
         where.append("(instr(lower(t.title), lower(?)) > 0 OR instr(lower(t.description), lower(?)) > 0)")
         params.extend([q, q])
+    for tag in tags:
+        where.append("EXISTS (SELECT 1 FROM task_tags tt WHERE tt.task_id = t.id AND tt.tag = ?)")
+        params.append(tag)
     clause = f"WHERE {' AND '.join(where)}"
     return clause, params
 
 
-def list_tasks(db, *, project_id=None, status=None, q=None, sort="created_at", limit, offset):
-    clause, params = _task_filters(project_id, status, q)
+def list_tasks(db, *, project_id=None, status=None, q=None, tags=(), sort="created_at", limit, offset):
+    clause, params = _task_filters(project_id, status, q, tags)
     total = db.execute(f"SELECT COUNT(*) FROM tasks t {clause}", params).fetchone()[0]
     rows = db.execute(
         f"SELECT t.* FROM tasks t {clause} ORDER BY {SORT_CLAUSES[sort]} LIMIT ? OFFSET ?",
