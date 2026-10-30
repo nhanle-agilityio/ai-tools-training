@@ -133,3 +133,19 @@ def parse_positive_int(value, name, default):
     if number < 1:
         raise ValidationError(f"{name} must be >= 1")
     return number
+
+
+def normalize_tag_value(value):
+    """Normalise one tag the way it is stored (strip + lower); blank is an error."""
+    tag = value.strip().lower()
+    if not tag:
+        raise ValidationError("tag must not be empty")
+    return tag
+
+
+def validate_tag_filter(values):
+    """Normalise the ``tag`` query values: blank check first, de-duplicate, cap at MAX_TAGS."""
+    tags = list(dict.fromkeys(normalize_tag_value(v) for v in values))
+    if len(tags) > MAX_TAGS:
+        raise ValidationError(f"at most {MAX_TAGS} tags can be filtered")
+    return tags

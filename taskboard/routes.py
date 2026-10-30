@@ -60,6 +60,7 @@ def list_tasks():
         get_db(),
         project_id=parse_positive_int(project_id, "project_id", None),
         status=args.get("status"),
+        tags=args.getlist("tag"),
         q=args.get("q", "").strip() or None,
         sort=args.get("sort", "created_at"),
         page=parse_positive_int(args.get("page"), "page", 1),

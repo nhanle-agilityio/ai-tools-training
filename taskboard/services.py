@@ -15,6 +15,7 @@ from .validators import (
     validate_project,
     validate_project_update,
     validate_status,
+    validate_tag_filter,
     validate_tags,
     validate_title,
 )
@@ -162,14 +163,15 @@ def paginate(total, page, per_page):
     }
 
 
-def list_tasks(db, *, project_id=None, status=None, q=None, sort="created_at", page=1, per_page=10):
+def list_tasks(db, *, project_id=None, status=None, q=None, sort="created_at", page=1, per_page=10, tags=()):
     if status is not None:
         validate_status(status)
     if sort not in repository.SORT_CLAUSES:
         raise ValidationError(f"sort must be one of {', '.join(repository.SORT_CLAUSES)}")
+    tags = validate_tag_filter(tags)
     offset = (page - 1) * per_page
     rows, total = repository.list_tasks(
-        db, project_id=project_id, status=status, q=q, sort=sort, limit=per_page, offset=offset
+        db, project_id=project_id, status=status, q=q, tags=tags, sort=sort, limit=per_page, offset=offset
     )
     return {"items": _serialize_tasks(db, rows), "pagination": paginate(total, page, per_page)}
 
