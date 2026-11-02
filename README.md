@@ -13,6 +13,8 @@ A small task management REST API (project → task → tag) built with Python, F
 ```bash
 make setup   # create .venv and install dependencies
 make test    # run pytest
+make lint    # ruff check and format check (read-only, same as CI)
+make fmt     # apply ruff fixes and format, then re-check
 make seed    # reset the DB (instance/taskboard.sqlite) and load demo data
 make run     # start the server at http://127.0.0.1:5050
 ```
