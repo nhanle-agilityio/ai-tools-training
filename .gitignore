@@ -11,3 +11,6 @@ plan.md
 
 # Playwright MCP output (screenshots, snapshots, console logs)
 .playwright-mcp/
+
+# devflow worktrees
+.claude/worktrees/

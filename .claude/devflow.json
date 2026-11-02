@@ -46,5 +46,7 @@
   },
   "testing": { "e2eFramework": false },
   "spec": { "testMatrix": true, "qaModel": "opus" },
-  "nextTask": { "defaultLimit": 3, "maxFixRounds": 2, "maxReviewRounds": 2 }
+  "nextTask": { "defaultLimit": 3, "maxFixRounds": 2, "maxReviewRounds": 2 },
+  "worktree": { "dir": ".claude/worktrees", "setup": ["make setup"] },
+  "dispatch": { "maxLanes": 3 }
 }
