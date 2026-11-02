@@ -59,6 +59,22 @@ def count_tasks_by_status(db, project_id):
     return {row["status"]: row["n"] for row in rows}
 
 
+def count_tasks_by_priority(db, project_id):
+    rows = db.execute(
+        "SELECT priority, COUNT(*) AS n FROM tasks WHERE project_id = ? AND deleted_at IS NULL GROUP BY priority",
+        (project_id,),
+    ).fetchall()
+    return {row["priority"]: row["n"] for row in rows}
+
+
+def count_overdue_tasks(db, project_id, today):
+    return db.execute(
+        "SELECT COUNT(*) FROM tasks WHERE project_id = ? AND deleted_at IS NULL "
+        "AND status != 'done' AND due_date IS NOT NULL AND due_date < ?",
+        (project_id, today),
+    ).fetchone()[0]
+
+
 # --- tasks --------------------------------------------------------------------
 
 
