@@ -178,6 +178,25 @@ def count_project_tags(db, project_id):
     return [{"tag": row["tag"], "task_count": row["task_count"]} for row in rows]
 
 
+def remove_project_tag(db, project_id, tag, now):
+    """Remove ``tag`` from the live tasks of a project; return how many tasks lost it.
+
+    The tag delete and the ``updated_at`` update share one commit.
+    """
+    live_with_tag = """
+        SELECT tt.task_id FROM task_tags tt JOIN tasks t ON t.id = tt.task_id
+         WHERE t.project_id = ? AND t.deleted_at IS NULL AND tt.tag = ?
+    """
+    task_ids = [row["task_id"] for row in db.execute(live_with_tag, (project_id, tag)).fetchall()]
+    if not task_ids:
+        return 0
+    placeholders = ",".join("?" for _ in task_ids)
+    db.execute(f"DELETE FROM task_tags WHERE tag = ? AND task_id IN ({placeholders})", [tag, *task_ids])
+    db.execute(f"UPDATE tasks SET updated_at = ? WHERE id IN ({placeholders})", [now, *task_ids])
+    db.commit()
+    return len(task_ids)
+
+
 def count_comments(db, task_ids):
     if not task_ids:
         return {}

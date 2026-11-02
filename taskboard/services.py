@@ -7,6 +7,7 @@ from . import repository
 from .errors import ConflictError, NotFoundError, ValidationError
 from .validators import (
     VALID_STATUSES,
+    normalize_tag_value,
     validate_comment_body,
     validate_due_date,
     validate_new_comment,
@@ -92,6 +93,15 @@ def project_stats(db, project_id):
 def list_project_tags(db, project_id):
     get_project(db, project_id)
     return repository.count_project_tags(db, project_id)
+
+
+def remove_project_tag(db, project_id, tag):
+    get_project(db, project_id)
+    tag = normalize_tag_value(tag)
+    removed = repository.remove_project_tag(db, project_id, tag, _now())
+    if removed == 0:
+        raise NotFoundError(f"tag {tag} not found in project {project_id}")
+    return {"tag": tag, "removed_from": removed}
 
 
 # --- tasks --------------------------------------------------------------------

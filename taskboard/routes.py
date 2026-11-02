@@ -50,6 +50,11 @@ def project_tags(project_id):
     return jsonify(items=services.list_project_tags(get_db(), project_id))
 
 
+@bp.delete("/projects/<int:project_id>/tags/<path:tag>")
+def remove_project_tag(project_id, tag):
+    return jsonify(services.remove_project_tag(get_db(), project_id, tag))
+
+
 # --- tasks --------------------------------------------------------------------
 
 

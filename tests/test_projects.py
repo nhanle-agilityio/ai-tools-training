@@ -391,3 +391,188 @@ def test_t2_13_project_tags_deleted_project(client, project, make_task):
     resp = client.get(f"/projects/{project['id']}/tags")
     assert resp.status_code == 404
     assert resp.get_json() == {"error": f"project {project['id']} not found"}
+
+
+# --- T3: remove a tag from all live tasks of a project ---------------------------
+
+
+def _step_clock(monkeypatch, value):
+    monkeypatch.setattr("taskboard.services._now", lambda: value)
+
+
+def _tags_of(client, task):
+    return client.get(f"/tasks/{task['id']}").get_json()["tags"]
+
+
+def _tag_row_exists(app, task_id, tag):
+    from taskboard.db import get_db
+
+    with app.app_context():
+        row = (
+            get_db()
+            .execute("SELECT 1 FROM task_tags WHERE task_id = ? AND tag = ?", (task_id, tag))
+            .fetchone()
+        )
+    return row is not None
+
+
+def _make_project(client, name):
+    return client.post("/projects", json={"name": name}).get_json()
+
+
+def test_t3_1_remove_tag_response_and_remaining_tags(client, project, make_task):
+    a = make_task(tags=["bug", "ui"])
+    b = make_task(tags=["bug"])
+    c = make_task(tags=["ui"])
+
+    resp = client.delete(f"/projects/{project['id']}/tags/bug")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"tag": "bug", "removed_from": 2}
+    assert _tags_of(client, a) == ["ui"]
+    assert _tags_of(client, b) == []
+    assert _tags_of(client, c) == ["ui"]
+
+
+def test_t3_4_remove_tag_sets_updated_at_only_on_changed_tasks(client, project, make_task, monkeypatch):
+    _step_clock(monkeypatch, "2026-10-30T09:00:00")
+    a = make_task(tags=["bug", "ui"])
+    b = make_task(tags=["bug"])
+    c = make_task(tags=["ui"])
+    _step_clock(monkeypatch, "2026-10-30T10:00:00")
+
+    assert client.delete(f"/projects/{project['id']}/tags/bug").status_code == 200
+
+    got = {t["id"]: client.get(f"/tasks/{t['id']}").get_json() for t in (a, b, c)}
+    assert got[a["id"]]["updated_at"] == "2026-10-30T10:00:00"
+    assert got[b["id"]]["updated_at"] == "2026-10-30T10:00:00"
+    assert got[c["id"]]["updated_at"] == "2026-10-30T09:00:00"
+
+
+def test_t3_6_other_project_task_keeps_tag(client, project, make_task, monkeypatch):
+    _step_clock(monkeypatch, "2026-10-30T09:00:00")
+    make_task(tags=["bug"])
+    other = _make_project(client, "Other")
+    x = client.post("/tasks", json={"project_id": other["id"], "title": "X", "tags": ["bug"]}).get_json()
+    _step_clock(monkeypatch, "2026-10-30T10:00:00")
+
+    assert client.delete(f"/projects/{project['id']}/tags/bug").status_code == 200
+
+    got = client.get(f"/tasks/{x['id']}").get_json()
+    assert got["tags"] == ["bug"]
+    assert got["updated_at"] == "2026-10-30T09:00:00"
+    assert client.get(f"/projects/{other['id']}/tags").get_json() == {
+        "items": [{"tag": "bug", "task_count": 1}]
+    }
+
+
+def test_t3_7_soft_deleted_task_keeps_task_tags_row(app, client, project, make_task, monkeypatch):
+    _step_clock(monkeypatch, "2026-10-30T09:00:00")
+    make_task(tags=["bug"])
+    d = make_task(tags=["bug"])
+    assert client.delete(f"/tasks/{d['id']}").status_code == 204
+    _step_clock(monkeypatch, "2026-10-30T10:00:00")
+
+    resp = client.delete(f"/projects/{project['id']}/tags/bug")
+    assert resp.status_code == 200
+    assert resp.get_json()["removed_from"] == 1
+    assert _tag_row_exists(app, d["id"], "bug")
+    from taskboard.db import get_db
+
+    with app.app_context():
+        row = get_db().execute("SELECT updated_at FROM tasks WHERE id = ?", (d["id"],)).fetchone()
+    assert row["updated_at"] == "2026-10-30T09:00:00"
+
+
+def test_t3_8_uppercase_tag_is_normalised(client, project, make_task):
+    a = make_task(tags=["bug"])
+
+    resp = client.delete(f"/projects/{project['id']}/tags/Bug")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"tag": "bug", "removed_from": 1}
+    assert _tags_of(client, a) == []
+
+
+def test_t3_9_padded_tag_is_normalised(client, project, make_task):
+    make_task(tags=["bug"])
+
+    resp = client.delete(f"/projects/{project['id']}/tags/%20bug%20")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"tag": "bug", "removed_from": 1}
+
+
+def test_t3_11_encoded_slash_tag_removed(client, project, make_task):
+    a = make_task(tags=["ui/ux", "ui", "ux"])
+
+    resp = client.delete(f"/projects/{project['id']}/tags/ui%2Fux")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"tag": "ui/ux", "removed_from": 1}
+    assert _tags_of(client, a) == ["ui", "ux"]
+
+
+def test_t3_13_trailing_slash_is_part_of_the_tag(client, project, make_task):
+    a = make_task(tags=["bug"])
+    make_task(tags=["bug/"])
+
+    resp = client.delete(f"/projects/{project['id']}/tags/bug/")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"tag": "bug/", "removed_from": 1}
+    assert _tags_of(client, a) == ["bug"]
+
+
+def test_t3_14_retried_removal_is_404(client, project, make_task):
+    make_task(tags=["bug"])
+    assert client.delete(f"/projects/{project['id']}/tags/bug").status_code == 200
+
+    resp = client.delete(f"/projects/{project['id']}/tags/bug")
+    assert resp.status_code == 404
+    assert resp.get_json() == {"error": f"tag bug not found in project {project['id']}"}
+
+
+def test_t3_15_tag_only_on_deleted_tasks_is_404(app, client, project, make_task):
+    d = make_task(tags=["bug"])
+    make_task(tags=["ui"])
+    assert client.delete(f"/tasks/{d['id']}").status_code == 204
+
+    resp = client.delete(f"/projects/{project['id']}/tags/bug")
+    assert resp.status_code == 404
+    assert resp.get_json() == {"error": f"tag bug not found in project {project['id']}"}
+    assert _tag_row_exists(app, d["id"], "bug")
+
+
+def test_t3_18_blank_tag_is_400(client, project):
+    resp = client.delete(f"/projects/{project['id']}/tags/%20")
+    assert resp.status_code == 400
+    assert resp.get_json() == {"error": "tag must not be empty"}
+
+
+def test_t3_20_missing_project_is_404(client):
+    resp = client.delete("/projects/999/tags/bug")
+    assert resp.status_code == 404
+    assert resp.get_json() == {"error": "project 999 not found"}
+
+
+def test_t3_21_deleted_project_is_404_and_rows_stay(app, client, project, make_task):
+    a = make_task(tags=["bug"])
+    assert client.delete(f"/projects/{project['id']}").status_code == 204
+
+    resp = client.delete(f"/projects/{project['id']}/tags/bug")
+    assert resp.status_code == 404
+    assert resp.get_json() == {"error": f"project {project['id']} not found"}
+    assert _tag_row_exists(app, a["id"], "bug")
+
+
+def test_t3_22_project_is_checked_before_tag(client):
+    resp = client.delete("/projects/999/tags/%20")
+    assert resp.status_code == 404
+    assert resp.get_json() == {"error": "project 999 not found"}
+
+
+def test_t3_24_project_updated_at_unchanged(client, project, make_task, monkeypatch):
+    _step_clock(monkeypatch, "2026-10-30T09:00:00")
+    p = _make_project(client, "Clocked")
+    client.post("/tasks", json={"project_id": p["id"], "title": "A", "tags": ["bug"]})
+    before = client.get(f"/projects/{p['id']}").get_json()["updated_at"]
+    _step_clock(monkeypatch, "2026-10-30T10:00:00")
+
+    assert client.delete(f"/projects/{p['id']}/tags/bug").status_code == 200
+    assert client.get(f"/projects/{p['id']}").get_json()["updated_at"] == before
