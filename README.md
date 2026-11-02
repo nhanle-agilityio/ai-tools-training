@@ -35,7 +35,7 @@ curl -s -X PATCH localhost:5050/tasks/1 -H 'Content-Type: application/json' -d '
 | GET | `/projects/<id>` | Get a project |
 | GET | `/projects/<id>/stats` | Project task stats: `project_id`, `total`, `by_status`, `by_priority`, `overdue`, `completion_rate`, `in_progress_rate` |
 | GET | `/stats` | Summary across active projects: `projects`, `total`, `by_status`, `overdue`, `top_tags` |
-| GET | `/tasks` | List tasks. Query params: `project_id`, `status`, `q` (search), `sort` (`created_at` \| `due_date` \| `priority`), `page`, `per_page` (max 50) |
+| GET | `/tasks` | List tasks. Query params: `project_id`, `status`, `q` (search), `sort` (`created_at` \| `due_date` \| `priority` \| `comments`), `page`, `per_page` (max 50) |
 | POST | `/tasks` | Create a task `{project_id, title, description?, status?, priority?, due_date?, tags?}` |
 | GET | `/tasks/overdue` | Open tasks past their due date |
 | GET | `/tasks/<id>` | Get a task |
