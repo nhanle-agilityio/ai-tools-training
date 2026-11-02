@@ -1,7 +1,11 @@
+import sqlite3
 from datetime import date, datetime, time, timedelta
+from pathlib import Path
 
 import pytest
 
+from taskboard import create_app
+from taskboard.db import init_db
 from taskboard.services import is_overdue
 
 # --- create / read / delete -----------------------------------------------------
@@ -554,3 +558,252 @@ def test_t1_44_without_tag_behaves_as_before(client, make_task):
     assert set(body) == {"items", "pagination"}
     assert set(body["pagination"]) == {"page", "per_page", "total", "pages", "has_next"}
     assert {"tags", "is_overdue", "comment_count"} <= set(body["items"][0])
+
+
+# --- sort=comments (#58) --------------------------------------------------------
+
+SORT_ERROR = "sort must be one of created_at, due_date, priority, comments"
+
+
+def _comment(client, task_id, n=1):
+    ids = []
+    for i in range(n):
+        resp = client.post(f"/tasks/{task_id}/comments", json={"author": "Lan", "body": f"c{i}"})
+        assert resp.status_code == 201, resp.get_json()
+        ids.append(resp.get_json()["id"])
+    return ids
+
+
+def _by_comments(client, query=""):
+    resp = client.get(f"/tasks?sort=comments{query}")
+    assert resp.status_code == 200, resp.get_json()
+    return resp.get_json()
+
+
+def _body_ids(body):
+    return [item["id"] for item in body["items"]]
+
+
+def _body_counts(body):
+    return [item["comment_count"] for item in body["items"]]
+
+
+def test_sort_comments_t1_1_sort_comments_orders_most_first(client, make_task):
+    a, b, c = make_task(title="A"), make_task(title="B"), make_task(title="C")
+    _comment(client, b["id"], 2)
+    _comment(client, c["id"], 1)
+    body = _by_comments(client)
+    assert _body_ids(body) == [b["id"], c["id"], a["id"]]
+    assert _body_counts(body) == [2, 1, 0]
+
+
+def test_sort_comments_t1_2_sort_comments_zero_comments_fall_back_to_default_order(client, make_task):
+    x, y = make_task(title="X"), make_task(title="Y")
+    body = _by_comments(client)
+    assert _body_ids(body) == [y["id"], x["id"]]
+    assert _body_counts(body) == [0, 0]
+
+
+def test_sort_comments_t1_3_sort_comments_empty_list(client):
+    body = _by_comments(client)
+    assert body["items"] == []
+    assert body["pagination"]["total"] == 0
+
+
+def test_sort_comments_t1_4_soft_deleted_comments_do_not_count(client, make_task):
+    c = make_task(title="C")
+    _comment(client, c["id"], 2)
+    b = make_task(title="B")
+    comment_ids = _comment(client, b["id"], 3)
+    for cid in comment_ids[:2]:
+        assert client.delete(f"/comments/{cid}").status_code == 204
+    body = _by_comments(client)
+    assert _body_ids(body) == [c["id"], b["id"]]
+    assert _body_counts(body) == [2, 1]
+
+
+def test_sort_comments_t1_5_all_comments_deleted_ties_with_zero(client, make_task):
+    e = make_task(title="E")
+    d = make_task(title="D")
+    for cid in _comment(client, d["id"], 2):
+        assert client.delete(f"/comments/{cid}").status_code == 204
+    body = _by_comments(client)
+    assert _body_ids(body) == [d["id"], e["id"]]
+    assert _body_counts(body) == [0, 0]
+
+
+def test_sort_comments_t1_6_ties_with_same_created_at_resolve_by_id_desc(client, make_task):
+    p, q, r = make_task(title="P"), make_task(title="Q"), make_task(title="R")
+    for task in (p, q, r):
+        _comment(client, task["id"], 1)
+    assert _body_ids(_by_comments(client)) == [r["id"], q["id"], p["id"]]
+
+
+def test_sort_comments_t1_7_ties_order_by_created_at_before_id(app, client, make_task):
+    p, q = make_task(title="P"), make_task(title="Q")
+    _comment(client, p["id"], 1)
+    _comment(client, q["id"], 1)
+    conn = sqlite3.connect(app.config["DATABASE"])
+    try:
+        conn.execute("UPDATE tasks SET created_at = ? WHERE id = ?", ("2099-01-01T00:00:00", p["id"]))
+        conn.commit()
+    finally:
+        conn.close()
+    assert _body_ids(_by_comments(client)) == [p["id"], q["id"]]
+
+
+def _filter_data(client, project, make_task):
+    p2 = client.post("/projects", json={"name": "Other"}).get_json()
+    m1 = make_task(title="fix x", status="todo", tags=["bug"])
+    m2 = make_task(title="fix x again", status="todo", tags=["bug"])
+    _comment(client, m1["id"], 1)
+    _comment(client, m2["id"], 3)
+    others = [
+        make_task(project_id=p2["id"], title="fix x", status="todo", tags=["bug"]),
+        make_task(title="fix x", status="done", tags=["bug"]),
+        make_task(title="fix x", status="todo", tags=["ui"]),
+        make_task(title="patch y", status="todo", tags=["bug"]),
+    ]
+    for task in others:
+        _comment(client, task["id"], 5)
+    return m1, m2, others
+
+
+def test_sort_comments_t1_8_sort_comments_combined_with_filters(client, project, make_task):
+    m1, m2, _ = _filter_data(client, project, make_task)
+    body = _by_comments(client, f"&project_id={project['id']}&status=todo&tag=bug&q=x")
+    assert _body_ids(body) == [m2["id"], m1["id"]]
+    assert body["pagination"]["total"] == 2
+
+
+def test_sort_comments_t1_9_sort_comments_with_status_keeps_total_and_ids(client, project, make_task):
+    _filter_data(client, project, make_task)
+    plain = client.get("/tasks?status=todo&per_page=50").get_json()
+    body = _by_comments(client, "&status=todo&per_page=50")
+    assert body["pagination"]["total"] == plain["pagination"]["total"]
+    assert sorted(_body_ids(body)) == sorted(_body_ids(plain))
+    counts = _body_counts(body)
+    assert counts == sorted(counts, reverse=True)
+
+
+def _five_tasks(client, make_task):
+    tasks = [make_task(title=f"T{n}") for n in range(5)]
+    for n, task in enumerate(tasks):
+        _comment(client, task["id"], n)
+    return tasks
+
+
+def test_sort_comments_t1_10_sort_comments_pagination_covers_every_task_once(client, make_task):
+    tasks = _five_tasks(client, make_task)
+    seen, counts, sizes = [], [], []
+    for page in (1, 2, 3):
+        body = _by_comments(client, f"&per_page=2&page={page}")
+        assert body["pagination"]["total"] == 5
+        sizes.append(len(body["items"]))
+        seen += _body_ids(body)
+        counts += _body_counts(body)
+    assert sizes == [2, 2, 1]
+    assert sorted(seen) == sorted(t["id"] for t in tasks)
+    assert counts == [4, 3, 2, 1, 0]
+
+
+def test_sort_comments_t1_11_sort_comments_page_out_of_range(client, make_task):
+    _five_tasks(client, make_task)
+    resp = client.get("/tasks?sort=comments&per_page=2&page=4")
+    assert resp.status_code == 400
+    assert resp.get_json() == {"error": "page 4 is out of range (1-3)"}
+
+
+def test_sort_comments_t1_12_unknown_sort_lists_comments_in_error(client):
+    resp = client.get("/tasks?sort=title")
+    assert resp.status_code == 400
+    assert resp.get_json() == {"error": SORT_ERROR}
+
+
+@pytest.mark.parametrize("value", ["Comments", "", "-comments", "comment"])
+def test_sort_comments_t1_13_near_miss_sort_values_return_400(client, value):
+    resp = client.get("/tasks", query_string={"sort": value})
+    assert resp.status_code == 400
+    assert resp.get_json() == {"error": SORT_ERROR}
+
+
+def test_sort_comments_t1_14_repeated_sort_uses_first_value(client, make_task):
+    a, b = make_task(title="A"), make_task(title="B")
+    _comment(client, a["id"], 2)
+    resp = client.get("/tasks?sort=comments&sort=title")
+    assert resp.status_code == 200
+    assert _body_ids(resp.get_json()) == [a["id"], b["id"]]
+    assert client.get("/tasks?sort=title&sort=comments").status_code == 400
+
+
+def test_sort_comments_t1_15_list_comment_count_matches_detail(client, make_task):
+    make_task(title="A")
+    b = make_task(title="B")
+    c = make_task(title="C")
+    deleted = _comment(client, b["id"], 3)[0]
+    assert client.delete(f"/comments/{deleted}").status_code == 204
+    _comment(client, c["id"], 1)
+    body = _by_comments(client)
+    assert len(body["items"]) == 3
+    for item in body["items"]:
+        detail = client.get(f"/tasks/{item['id']}").get_json()
+        assert item["comment_count"] == detail["comment_count"]
+
+
+def test_sort_comments_t1_16_soft_deleted_tasks_not_listed(client, make_task):
+    t = make_task(title="T")
+    _comment(client, t["id"], 5)
+    assert client.delete(f"/tasks/{t['id']}").status_code == 204
+    u = make_task(title="U")
+    _comment(client, u["id"], 1)
+    body = _by_comments(client)
+    assert _body_ids(body) == [u["id"]]
+    assert body["pagination"]["total"] == 1
+
+
+def _comment_selects(client, url):
+    statements = []
+    original = sqlite3.connect
+
+    def traced_connect(*args, **kwargs):
+        conn = original(*args, **kwargs)
+        conn.set_trace_callback(statements.append)
+        return conn
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(sqlite3, "connect", traced_connect)
+        assert client.get(url).status_code == 200
+    return [s for s in statements if "SELECT" in s.upper() and "task_comments" in s]
+
+
+def test_sort_comments_t1_18_existing_sorts_run_one_task_comments_select(client, make_task):
+    for n in range(3):
+        _comment(client, make_task(title=f"T{n}")["id"], 1)
+    for url in ("/tasks", "/tasks?sort=due_date", "/tasks?sort=priority"):
+        assert len(_comment_selects(client, url)) == 1, url
+
+
+def test_sort_comments_t1_19_sort_comments_has_no_n_plus_one(client, make_task, tmp_path):
+    for n in range(3):
+        _comment(client, make_task(title=f"T{n}")["id"], 1)
+    small = len(_comment_selects(client, "/tasks?sort=comments"))
+
+    big_app = create_app({"TESTING": True, "DATABASE": str(tmp_path / "big.sqlite")})
+    with big_app.app_context():
+        init_db()
+    big = big_app.test_client()
+    pid = big.post("/projects", json={"name": "Big"}).get_json()["id"]
+    for n in range(10):
+        task = big.post("/tasks", json={"project_id": pid, "title": f"T{n}"}).get_json()
+        _comment(big, task["id"], 1)
+    large = len(_comment_selects(big, "/tasks?sort=comments"))
+
+    assert small >= 1
+    assert small == large
+
+
+def test_sort_comments_t1_20_readme_lists_comments_sort_value():
+    readme = Path(__file__).resolve().parent.parent / "README.md"
+    rows = [line for line in readme.read_text().splitlines() if line.startswith("| GET | `/tasks` |")]
+    assert len(rows) == 1
+    assert "`priority` \\| `comments`" in rows[0]
