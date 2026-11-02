@@ -18,7 +18,9 @@
       "Bash(make run:*)",
       "mcp__claude_ai_github__*",
       "Bash(make setup:*)",
-      "Bash(git worktree:*)"
+      "Bash(git worktree:*)",
+      "Bash(git merge:*)",
+      "Bash(git push github:*)"
     ],
     "deny": [
       "Bash(git push --force:*)",
