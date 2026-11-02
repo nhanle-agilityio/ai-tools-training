@@ -42,28 +42,64 @@ WEBSITE_TASKS = [
     ("Contact form sends duplicate emails", "todo", "high", -4, ["bug"]),
     ("Cookie consent banner", "done", "medium", -7, ["legal"]),
     ("Customer portal login page", "todo", "high", 0, ["auth", "ui"]),
+    ("Optimise hero image loading", "in_progress", "medium", 3, ["performance", "ui"]),
+    ("Add alt text to marketing images", "todo", "low", 11, ["a11y", "seo"]),
+    ("Track newsletter sign-ups", "todo", "medium", 15, ["analytics"]),
+    ("Publish API documentation", "done", "medium", -2, ["docs"]),
+    ("German translation of landing page", "todo", "low", 20, ["i18n"]),
 ]
+
+# Soft-deleted on purpose, so deleted tasks can be seen to stay out of lists and stats.
+DELETED_TASK = ("Old campaign banner", "todo", "low", 5, ["ui", "legal"])
+
+# (task title, author, body)
+COMMENTS = [
+    ("Fix Login crash on Android 14", "Linh Tran", "Reproduced on a Pixel 8, stack trace attached."),
+    ("Fix Login crash on Android 14", "Minh Pham", "Looks like a null session token after resume."),
+    ("Add dark mode toggle", "An Nguyen", "Design tokens are ready in Figma."),
+    ("Crash when uploading avatar > 5MB", "Bao Le", "We should resize before upload."),
+    ("Redesign pricing page", "Chi Vo", "Marketing approved the new plan names."),
+    ("Contact form sends duplicate emails", "Duc Hoang", "Double submit on slow networks."),
+    ("Customer portal login page", "Hanh Do", "Needs the shared auth component."),
+    ("Cookie consent banner", "Khoa Ly", "Oops, wrong wording, ignore this one."),
+]
+DELETED_COMMENT_INDEX = 7
+DELETED_TASK_COMMENT = ("Quang Dang", "Campaign ended, safe to remove.")
 
 
 def _add_tasks(db, project_id, tasks, today):
+    created = []
     for title, status, priority, due_in, tags in tasks:
-        services.create_task(
-            db,
-            {
-                "project_id": project_id,
-                "title": title,
-                "status": status,
-                "priority": priority,
-                "due_date": (today + timedelta(days=due_in)).isoformat() if due_in is not None else None,
-                "tags": tags,
-            },
-        )
+        due = (today + timedelta(days=due_in)).isoformat() if due_in is not None else None
+        data = {
+            "project_id": project_id,
+            "title": title,
+            "status": status,
+            "priority": priority,
+            "due_date": due,
+            "tags": tags,
+        }
+        created.append(services.create_task(db, data))
+    return created
 
 
 def seed(db):
     today = date.today()
     mobile = services.create_project(db, PROJECTS[0])
     website = services.create_project(db, PROJECTS[1])
-    _add_tasks(db, mobile["id"], MOBILE_TASKS, today)
-    _add_tasks(db, website["id"], WEBSITE_TASKS, today)
+    tasks = _add_tasks(db, mobile["id"], MOBILE_TASKS, today)
+    tasks += _add_tasks(db, website["id"], WEBSITE_TASKS, today)
+    by_title = {t["title"]: t for t in tasks}
+
+    comments = [
+        services.create_comment(db, by_title[title]["id"], {"author": author, "body": body})
+        for title, author, body in COMMENTS
+    ]
+    services.delete_comment(db, comments[DELETED_COMMENT_INDEX]["id"])
+
+    (doomed,) = _add_tasks(db, website["id"], [DELETED_TASK], today)
+    author, body = DELETED_TASK_COMMENT
+    services.create_comment(db, doomed["id"], {"author": author, "body": body})
+    services.delete_task(db, doomed["id"])
+
     services.create_project(db, {"name": "Game Prototype", "description": "Unity prototype, not started"})
