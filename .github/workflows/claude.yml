@@ -1,6 +1,9 @@
+# Installed by the devflow plugin (/devflow:init). Copy of the upstream Claude Code workflow, unchanged.
 name: Claude Code
 
-# Runs when someone mentions @claude in an issue, a PR comment or a review.
+# Runs when someone mentions Claude in an issue, a PR comment or a review (the trigger word is the
+# at-sign handle in the `if` conditions below).
+# Installed by the devflow plugin. Needs the CLAUDE_CODE_OAUTH_TOKEN repository secret.
 
 on:
   issue_comment:
@@ -28,7 +31,7 @@ jobs:
       actions: read
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
 
