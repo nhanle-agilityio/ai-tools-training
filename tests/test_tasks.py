@@ -393,3 +393,164 @@ def test_deleted_task_absent_from_overdue(client, make_task):
     assert [t["id"] for t in client.get("/tasks/overdue").get_json()["items"]] == [task["id"]]
     client.delete(f"/tasks/{task['id']}")
     assert client.get("/tasks/overdue").get_json()["items"] == []
+
+
+# --- filter by tag (T1) ----------------------------------------------------------
+
+
+def _ids(resp):
+    return [t["id"] for t in resp.get_json()["items"]]
+
+
+@pytest.fixture
+def tagged(make_task):
+    return {
+        "a": make_task(title="A", tags=["bug", "ui"]),
+        "b": make_task(title="B", tags=["bug"]),
+        "c": make_task(title="C", tags=[]),
+    }
+
+
+def test_t1_1_tag_filter_returns_matching_tasks(client, tagged):
+    resp = client.get("/tasks?tag=bug")
+    assert resp.status_code == 200
+    assert set(_ids(resp)) == {tagged["a"]["id"], tagged["b"]["id"]}
+    assert resp.get_json()["pagination"]["total"] == 2
+
+
+def test_t1_4_t1_5_multiple_tags_are_anded(client, make_task, tagged):
+    d = make_task(title="D", tags=["ui"])
+    for query in ("tag=bug&tag=ui", "tag=ui&tag=bug"):
+        assert _ids(client.get(f"/tasks?{query}")) == [tagged["a"]["id"]]
+    assert d["id"] not in _ids(client.get("/tasks?tag=bug&tag=ui"))
+
+
+@pytest.mark.parametrize("query", ["tag=Bug", "tag=%20bug%20", "tag=%09BUG%0A"])
+def test_t1_7_t1_8_tag_is_normalised(client, tagged, query):
+    assert set(_ids(client.get(f"/tasks?{query}"))) == {tagged["a"]["id"], tagged["b"]["id"]}
+
+
+def test_t1_13_duplicate_tags_count_once(client, tagged):
+    for query in ("tag=bug&tag=BUG", "tag=bug&tag=%20Bug%20&tag=bug"):
+        resp = client.get(f"/tasks?{query}")
+        assert set(_ids(resp)) == {tagged["a"]["id"], tagged["b"]["id"]}
+        assert resp.get_json()["pagination"]["total"] == 2
+
+
+def test_t1_15_unknown_tag_returns_empty(client, tagged):
+    resp = client.get("/tasks?tag=nope")
+    assert resp.status_code == 200
+    assert resp.get_json()["items"] == []
+    assert resp.get_json()["pagination"]["total"] == 0
+
+
+def test_t1_18_filtered_tasks_keep_full_tags(client, tagged):
+    by_id = {t["id"]: t for t in client.get("/tasks?tag=bug").get_json()["items"]}
+    assert by_id[tagged["a"]["id"]]["tags"] == ["bug", "ui"]
+    assert by_id[tagged["b"]["id"]]["tags"] == ["bug"]
+
+
+def test_t1_20_tag_combines_with_project_id(client, make_task, project):
+    a = make_task(tags=["bug"])
+    other = client.post("/projects", json={"name": "Other"}).get_json()
+    make_task(project_id=other["id"], tags=["bug"])
+    resp = client.get(f"/tasks?tag=bug&project_id={project['id']}")
+    assert _ids(resp) == [a["id"]]
+    assert resp.get_json()["pagination"]["total"] == 1
+
+
+def test_t1_22_tag_combines_with_status(client, make_task):
+    make_task(tags=["bug"], status="todo")
+    b = make_task(tags=["bug"], status="done")
+    make_task(tags=[], status="done")
+    resp = client.get("/tasks?tag=bug&status=done")
+    assert _ids(resp) == [b["id"]]
+    assert resp.get_json()["pagination"]["total"] == 1
+
+
+def test_t1_23_tag_combines_with_q(client, make_task):
+    a = make_task(title="Login crash", tags=["bug"])
+    make_task(title="Docs", tags=["bug"])
+    make_task(title="Login form", tags=[])
+    resp = client.get("/tasks?tag=bug&q=login")
+    assert _ids(resp) == [a["id"]]
+    assert resp.get_json()["pagination"]["total"] == 1
+
+
+def test_t1_24_tag_combines_with_sort(client, make_task):
+    low = make_task(tags=["bug"], priority="low")
+    high = make_task(tags=["bug"], priority="high")
+    med = make_task(tags=["bug"], priority="medium")
+    make_task(tags=[], priority="high")
+    assert _ids(client.get("/tasks?tag=bug&sort=priority")) == [high["id"], med["id"], low["id"]]
+
+
+def test_t1_25_tag_combines_with_pagination(client, make_task):
+    for _ in range(3):
+        make_task(tags=["bug"])
+    for _ in range(2):
+        make_task(tags=[])
+    body = client.get("/tasks?tag=bug&per_page=2&page=2").get_json()
+    assert len(body["items"]) == 1
+    assert body["pagination"] == {"page": 2, "per_page": 2, "total": 3, "pages": 2, "has_next": False}
+
+
+def test_t1_27_out_of_range_page_uses_filtered_total(client, make_task):
+    make_task(tags=["bug"])
+    for _ in range(15):
+        make_task(tags=[])
+    resp = client.get("/tasks?tag=bug&page=2")
+    assert resp.status_code == 400
+    assert resp.get_json() == {"error": "page 2 is out of range (1-1)"}
+
+
+def test_t1_29_soft_deleted_tasks_not_returned_or_counted(client, make_task):
+    a = make_task(tags=["bug"])
+    b = make_task(tags=["bug"])
+    client.delete(f"/tasks/{b['id']}")
+    resp = client.get("/tasks?tag=bug")
+    assert _ids(resp) == [a["id"]]
+    assert resp.get_json()["pagination"]["total"] == 1
+
+
+@pytest.mark.parametrize("query", ["tag=", "tag=%20", "tag", "tag=bug&tag=%20%09", "tag=&page=99"])
+def test_t1_31_t1_32_blank_tag_is_rejected(client, tagged, query):
+    resp = client.get(f"/tasks?{query}")
+    assert resp.status_code == 400
+    assert resp.get_json() == {"error": "tag must not be empty"}
+
+
+def test_t1_35_eleven_distinct_tags_rejected(client):
+    query = "&".join(f"tag=t{i}" for i in range(1, 12))
+    resp = client.get(f"/tasks?{query}")
+    assert resp.status_code == 400
+    assert resp.get_json() == {"error": "at most 10 tags can be filtered"}
+
+
+def test_t1_36_ten_distinct_tags_with_duplicates_allowed(client):
+    query = "&".join(f"tag=t{i}" for i in range(1, 11)) + "&tag=T1&tag=%20t2%20"
+    assert client.get(f"/tasks?{query}").status_code == 200
+
+
+def test_t1_38_blank_checked_before_too_many(client):
+    query = "&".join(f"tag=t{i}" for i in range(1, 12)) + "&tag="
+    assert client.get(f"/tasks?{query}").get_json() == {"error": "tag must not be empty"}
+
+
+def test_t1_39_t1_40_existing_status_error_wins(client, tagged):
+    expected = client.get("/tasks?status=bogus")
+    assert expected.status_code == 400
+    for query in ("tag=bug&status=bogus", "tag=&status=bogus"):
+        resp = client.get(f"/tasks?{query}")
+        assert resp.status_code == 400
+        assert resp.get_json() == expected.get_json()
+
+
+def test_t1_44_without_tag_behaves_as_before(client, make_task):
+    a = make_task(tags=["bug"])
+    c = make_task(tags=[])
+    body = client.get("/tasks").get_json()
+    assert {t["id"] for t in body["items"]} == {a["id"], c["id"]}
+    assert set(body) == {"items", "pagination"}
+    assert set(body["pagination"]) == {"page", "per_page", "total", "pages", "has_next"}
+    assert {"tags", "is_overdue", "comment_count"} <= set(body["items"][0])
