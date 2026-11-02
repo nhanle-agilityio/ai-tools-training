@@ -47,7 +47,6 @@
       "Bash(git push -d *)",
       "Bash(git push * -d)",
       "Bash(git push * -d *)",
-      "Bash(git push * :*)",
       "Bash(git push *refs/heads/main*)",
       "Bash(git push *refs/heads/develop*)",
       "Bash(git push *refs/heads/feature/example_taskboard*)"
