@@ -18,8 +18,7 @@
       "Bash(make run:*)",
       "mcp__claude_ai_github__*",
       "Bash(make setup:*)",
-      "Bash(git worktree:*)",
-      "Bash(git push github:*)"
+      "Bash(git worktree:*)"
     ],
     "deny": [
       "Bash(git push --force:*)",
@@ -35,7 +34,23 @@
       "Bash(git push * *:feature/example_taskboard)",
       "Bash(gh pr merge:*)",
       "mcp__claude_ai_github__merge_pull_request",
-      "mcp__claude_ai_github__delete_repository"
+      "mcp__claude_ai_github__delete_repository",
+      "Bash(git push --all *)",
+      "Bash(git push * --all)",
+      "Bash(git push * --all *)",
+      "Bash(git push --mirror *)",
+      "Bash(git push * --mirror)",
+      "Bash(git push * --mirror *)",
+      "Bash(git push --delete *)",
+      "Bash(git push * --delete)",
+      "Bash(git push * --delete *)",
+      "Bash(git push -d *)",
+      "Bash(git push * -d)",
+      "Bash(git push * -d *)",
+      "Bash(git push * :*)",
+      "Bash(git push *refs/heads/main*)",
+      "Bash(git push *refs/heads/develop*)",
+      "Bash(git push *refs/heads/feature/example_taskboard*)"
     ]
   },
   "hooks": {
