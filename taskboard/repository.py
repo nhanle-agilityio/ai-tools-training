@@ -75,6 +75,44 @@ def count_overdue_tasks(db, project_id, today):
     ).fetchone()[0]
 
 
+def count_active_projects(db):
+    return db.execute("SELECT COUNT(*) FROM projects WHERE deleted_at IS NULL").fetchone()[0]
+
+
+def count_all_tasks_by_status(db):
+    rows = db.execute(
+        "SELECT t.status AS status, COUNT(*) AS n FROM tasks t JOIN projects p ON p.id = t.project_id "
+        "WHERE t.deleted_at IS NULL AND p.deleted_at IS NULL GROUP BY t.status"
+    ).fetchall()
+    return {row["status"]: row["n"] for row in rows}
+
+
+def count_all_overdue_tasks(db, today):
+    return db.execute(
+        "SELECT COUNT(*) FROM tasks t JOIN projects p ON p.id = t.project_id "
+        "WHERE t.deleted_at IS NULL AND p.deleted_at IS NULL "
+        "AND t.status != 'done' AND t.due_date IS NOT NULL AND t.due_date < ?",
+        (today,),
+    ).fetchone()[0]
+
+
+def top_tags(db, limit):
+    rows = db.execute(
+        """
+        SELECT tt.tag AS tag, COUNT(*) AS task_count
+          FROM task_tags tt
+          JOIN tasks t ON t.id = tt.task_id
+          JOIN projects p ON p.id = t.project_id
+         WHERE t.deleted_at IS NULL AND p.deleted_at IS NULL
+         GROUP BY tt.tag
+         ORDER BY task_count DESC, tt.tag ASC
+         LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    return [{"tag": row["tag"], "task_count": row["task_count"]} for row in rows]
+
+
 # --- tasks --------------------------------------------------------------------
 
 
