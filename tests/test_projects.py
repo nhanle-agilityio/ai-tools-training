@@ -576,3 +576,222 @@ def test_t3_24_project_updated_at_unchanged(client, project, make_task, monkeypa
 
     assert client.delete(f"/projects/{p['id']}/tags/bug").status_code == 200
     assert client.get(f"/projects/{p['id']}").get_json()["updated_at"] == before
+
+
+# --- project stats: overdue and by_priority (#48) ---------------------------------------------
+
+
+def _days(offset):
+    from datetime import date, timedelta
+
+    return (date.today() + timedelta(days=offset)).isoformat()
+
+
+def _stats(client, project_id):
+    resp = client.get(f"/projects/{project_id}/stats")
+    assert resp.status_code == 200
+    return resp.get_json()
+
+
+def _make_in(client, project_id, **fields):
+    resp = client.post("/tasks", json={"project_id": project_id, "title": "T", **fields})
+    assert resp.status_code == 201, resp.get_json()
+    return resp.get_json()
+
+
+def _overdue_fixture(make_task):
+    make_task(status="todo", due_date=_days(-1))
+    make_task(status="in_progress", due_date=_days(-3))
+    make_task(status="done", due_date=_days(-1))
+    make_task(status="todo", due_date=_days(0))
+    make_task(status="todo", due_date=_days(1))
+    make_task(status="todo")
+
+
+def test_t1_1_by_priority_counts_live_tasks(client, project, make_task):
+    make_task(priority="high")
+    make_task(priority="high")
+    make_task(priority="medium")
+    assert _stats(client, project["id"])["by_priority"] == {"low": 0, "medium": 1, "high": 2}
+
+
+def test_t1_2_by_priority_counts_any_status(client, project, make_task):
+    make_task(priority="low", status="done")
+    make_task(priority="medium", status="in_progress")
+    make_task(priority="high", status="todo")
+    assert _stats(client, project["id"])["by_priority"] == {"low": 1, "medium": 1, "high": 1}
+
+
+def test_t1_3_by_priority_does_not_leak_between_projects(client, project, make_task):
+    other = client.post("/projects", json={"name": "Other"}).get_json()
+    make_task(priority="high")
+    make_task(priority="high")
+    _make_in(client, other["id"], priority="low")
+    assert _stats(client, project["id"])["by_priority"] == {"low": 0, "medium": 0, "high": 2}
+
+
+def test_t1_4_default_priority_counts_as_medium(client, project, make_task):
+    make_task()
+    assert _stats(client, project["id"])["by_priority"]["medium"] == 1
+
+
+def test_t1_5_priority_patch_moves_count(client, project, make_task):
+    task = make_task(priority="low")
+    assert client.patch(f"/tasks/{task['id']}", json={"priority": "high"}).status_code == 200
+    assert _stats(client, project["id"])["by_priority"] == {"low": 0, "medium": 0, "high": 1}
+
+
+def test_t1_6_by_priority_shape_and_sum(client, project, make_task):
+    make_task(priority="low")
+    make_task(priority="high")
+    make_task()
+    stats = _stats(client, project["id"])
+    assert set(stats["by_priority"]) == {"low", "medium", "high"}
+    assert all(isinstance(v, int) for v in stats["by_priority"].values())
+    assert sum(stats["by_priority"].values()) == stats["total"]
+
+
+def test_t1_7_empty_project_has_zero_priority_and_overdue(client, project):
+    stats = _stats(client, project["id"])
+    assert stats["by_priority"] == {"low": 0, "medium": 0, "high": 0}
+    assert stats["overdue"] == 0
+
+
+def test_t1_8_only_task_deleted_gives_zeros(client, project, make_task):
+    task = make_task(priority="high", status="todo", due_date=_days(-1))
+    client.delete(f"/tasks/{task['id']}")
+    stats = _stats(client, project["id"])
+    assert stats["by_priority"] == {"low": 0, "medium": 0, "high": 0}
+    assert stats["overdue"] == 0
+    assert stats["total"] == 0
+
+
+def test_t1_9_overdue_for_six_task_fixture(client, project, make_task):
+    _overdue_fixture(make_task)
+    assert _stats(client, project["id"])["overdue"] == 2
+
+
+def test_t1_10_due_today_is_not_overdue(client, project, make_task):
+    make_task(status="todo", due_date=_days(0))
+    assert _stats(client, project["id"])["overdue"] == 0
+
+
+def test_t1_11_due_yesterday_is_overdue(client, project, make_task):
+    make_task(status="todo", due_date=_days(-1))
+    assert _stats(client, project["id"])["overdue"] == 1
+
+
+def test_t1_12_done_task_is_not_overdue(client, project, make_task):
+    make_task(status="done", due_date=_days(-30))
+    assert _stats(client, project["id"])["overdue"] == 0
+
+
+def test_t1_13_overdue_excludes_other_project(client, project, make_task):
+    other = client.post("/projects", json={"name": "Other"}).get_json()
+    _make_in(client, other["id"], status="todo", due_date=_days(-1))
+    assert _stats(client, project["id"])["overdue"] == 0
+
+
+def test_t1_14_patch_to_done_clears_overdue(client, project, make_task):
+    task = make_task(status="todo", due_date=_days(-1))
+    client.patch(f"/tasks/{task['id']}", json={"status": "done"})
+    assert _stats(client, project["id"])["overdue"] == 0
+
+
+def test_t1_15_long_overdue_counts(client, project, make_task):
+    make_task(status="todo", due_date=_days(-400))
+    assert _stats(client, project["id"])["overdue"] == 1
+
+
+def test_t1_16_overdue_matches_tasks_overdue_endpoint(client, project, make_task):
+    _overdue_fixture(make_task)
+    items = client.get("/tasks/overdue").get_json()["items"]
+    mine = [t for t in items if t["project_id"] == project["id"]]
+    assert _stats(client, project["id"])["overdue"] == len(mine) == 2
+
+
+def test_t1_17_overdue_matches_endpoint_with_other_project(client, project, make_task):
+    other = client.post("/projects", json={"name": "Other"}).get_json()
+    _overdue_fixture(make_task)
+    _make_in(client, other["id"], status="todo", due_date=_days(-1))
+    items = client.get("/tasks/overdue").get_json()["items"]
+    mine = [t for t in items if t["project_id"] == project["id"]]
+    assert _stats(client, project["id"])["overdue"] == len(mine) == 2
+
+
+def test_t1_18_due_today_and_deleted_overdue_report_zero(client, project, make_task):
+    make_task(status="todo", due_date=_days(0))
+    gone = make_task(status="todo", due_date=_days(-1))
+    client.delete(f"/tasks/{gone['id']}")
+    items = client.get("/tasks/overdue").get_json()["items"]
+    assert [t for t in items if t["project_id"] == project["id"]] == []
+    assert _stats(client, project["id"])["overdue"] == 0
+
+
+def test_t1_19_deleted_task_not_counted_in_overdue_or_priority(client, project, make_task):
+    make_task(priority="medium")
+    gone = make_task(priority="high", status="todo", due_date=_days(-1))
+    client.delete(f"/tasks/{gone['id']}")
+    stats = _stats(client, project["id"])
+    assert stats["overdue"] == 0
+    assert stats["by_priority"] == {"low": 0, "medium": 1, "high": 0}
+
+
+def test_t1_20_deleted_task_not_counted_in_total_or_status(client, project, make_task):
+    make_task(priority="medium", status="done")
+    gone = make_task(priority="high", status="todo", due_date=_days(-1))
+    client.delete(f"/tasks/{gone['id']}")
+    stats = _stats(client, project["id"])
+    assert stats["total"] == 1
+    assert stats["by_status"]["todo"] == 0
+
+
+def test_t1_21_existing_fields_keep_values(client, project, make_task):
+    for status in ["todo", "todo", "in_progress", "done"]:
+        make_task(status=status)
+    stats = _stats(client, project["id"])
+    assert stats["project_id"] == project["id"]
+    assert stats["total"] == 4
+    assert stats["by_status"] == {"todo": 2, "in_progress": 1, "done": 1}
+    assert stats["completion_rate"] == 25.0
+    assert stats["in_progress_rate"] == 25.0
+
+
+def test_t1_22_empty_project_rates_are_int_zero(client, project):
+    stats = _stats(client, project["id"])
+    assert stats["completion_rate"] == 0 and isinstance(stats["completion_rate"], int)
+    assert stats["in_progress_rate"] == 0 and isinstance(stats["in_progress_rate"], int)
+
+
+def test_t1_23_completion_rate_rounds_to_one_decimal(client, project, make_task):
+    make_task(status="done")
+    make_task(status="todo")
+    make_task(status="todo")
+    assert _stats(client, project["id"])["completion_rate"] == 33.3
+
+
+def test_t1_24_stats_key_set(client, project, make_task):
+    make_task()
+    assert set(_stats(client, project["id"])) == {
+        "project_id",
+        "total",
+        "by_status",
+        "by_priority",
+        "overdue",
+        "completion_rate",
+        "in_progress_rate",
+    }
+
+
+def test_t1_25_stats_for_missing_project_is_404(client):
+    resp = client.get("/projects/9999/stats")
+    assert resp.status_code == 404
+    assert resp.get_json() == {"error": "project 9999 not found"}
+
+
+def test_t1_26_stats_for_deleted_project_is_404(client, project, make_task):
+    make_task(priority="high", status="todo", due_date=_days(-1))
+    assert client.delete(f"/projects/{project['id']}").status_code in (200, 204)
+    resp = client.get(f"/projects/{project['id']}/stats")
+    assert resp.status_code == 404
+    assert resp.get_json() == {"error": f"project {project['id']} not found"}

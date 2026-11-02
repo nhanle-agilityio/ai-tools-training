@@ -6,6 +6,7 @@ from datetime import datetime
 from . import repository
 from .errors import ConflictError, NotFoundError, ValidationError
 from .validators import (
+    VALID_PRIORITIES,
     VALID_STATUSES,
     normalize_tag_value,
     validate_comment_body,
@@ -78,6 +79,7 @@ def _percentage(part, whole):
 def project_stats(db, project_id):
     get_project(db, project_id)
     counts = repository.count_tasks_by_status(db, project_id)
+    priorities = repository.count_tasks_by_priority(db, project_id)
     total = sum(counts.values())
     done = counts.get("done", 0)
     in_progress = counts.get("in_progress", 0)
@@ -85,6 +87,8 @@ def project_stats(db, project_id):
         "project_id": project_id,
         "total": total,
         "by_status": {status: counts.get(status, 0) for status in VALID_STATUSES},
+        "by_priority": {priority: priorities.get(priority, 0) for priority in VALID_PRIORITIES},
+        "overdue": repository.count_overdue_tasks(db, project_id, datetime.now().date().isoformat()),
         "completion_rate": _percentage(done, total),
         "in_progress_rate": _percentage(in_progress, total),
     }
