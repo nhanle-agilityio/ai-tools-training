@@ -33,7 +33,8 @@ curl -s -X PATCH localhost:5050/tasks/1 -H 'Content-Type: application/json' -d '
 | GET | `/projects` | List projects |
 | POST | `/projects` | Create a project `{name, description?}` |
 | GET | `/projects/<id>` | Get a project |
-| GET | `/projects/<id>/stats` | Task counts by status and `completion_rate` |
+| GET | `/projects/<id>/stats` | Project task stats: `project_id`, `total`, `by_status`, `by_priority`, `overdue`, `completion_rate`, `in_progress_rate` |
+| GET | `/stats` | Summary across active projects: `projects`, `total`, `by_status`, `overdue`, `top_tags` |
 | GET | `/tasks` | List tasks. Query params: `project_id`, `status`, `q` (search), `sort` (`created_at` \| `due_date` \| `priority`), `page`, `per_page` (max 50) |
 | POST | `/tasks` | Create a task `{project_id, title, description?, status?, priority?, due_date?, tags?}` |
 | GET | `/tasks/overdue` | Open tasks past their due date |
@@ -44,6 +45,42 @@ curl -s -X PATCH localhost:5050/tasks/1 -H 'Content-Type: application/json' -d '
 Allowed values: `status` ∈ `todo, in_progress, done`; `priority` ∈ `low, medium, high`; `due_date` is `YYYY-MM-DD`.
 
 Errors are returned as `{"error": "..."}` with status 400 (invalid input) or 404 (not found).
+
+### Stats endpoints
+
+`GET /projects/<id>/stats` (numbers are illustrative):
+
+```json
+{
+  "project_id": 1,
+  "total": 8,
+  "by_status": { "todo": 3, "in_progress": 2, "done": 3 },
+  "by_priority": { "low": 2, "medium": 4, "high": 2 },
+  "overdue": 1,
+  "completion_rate": 37.5,
+  "in_progress_rate": 25.0
+}
+```
+
+`GET /stats` (no parameters; numbers are illustrative):
+
+```json
+{
+  "projects": 2,
+  "total": 14,
+  "by_status": { "todo": 6, "in_progress": 4, "done": 4 },
+  "overdue": 3,
+  "top_tags": [
+    { "tag": "backend", "task_count": 5 },
+    { "tag": "bug", "task_count": 5 },
+    { "tag": "docs", "task_count": 2 }
+  ]
+}
+```
+
+- Overdue: a task that is not `done` and has a `due_date` before today (a task due today is not overdue). It is the same rule as `GET /tasks/overdue`.
+- `completion_rate` and `in_progress_rate` are percentages of `total` (`0` when there are no tasks).
+- `top_tags` counts tasks in active projects that carry the tag, ordered by `task_count` descending then `tag` ascending, at most 5 items (`[]` when there are none).
 
 ## Project layout
 
