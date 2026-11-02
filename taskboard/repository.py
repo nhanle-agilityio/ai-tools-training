@@ -7,6 +7,10 @@ SORT_CLAUSES = {
         "CASE t.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 WHEN 'low' THEN 2 ELSE 3 END, "
         "t.due_date IS NULL, t.due_date ASC, t.id ASC"
     ),
+    "comments": (
+        "(SELECT COUNT(*) FROM task_comments c WHERE c.task_id = t.id AND c.deleted_at IS NULL) DESC, "
+        "t.created_at DESC, t.id DESC"
+    ),
 }
 
 
