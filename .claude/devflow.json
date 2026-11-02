@@ -40,7 +40,7 @@
   },
   "mergeGate": {
     "enabled": true,
-    "dryRun": true,
+    "dryRun": false,
     "requiredChecks": ["test", "devflow/review"],
     "method": "merge"
   },
