@@ -2,7 +2,7 @@ PYTHON ?= python3.12
 VENV := .venv
 BIN := $(VENV)/bin
 
-.PHONY: setup test run seed clean
+.PHONY: setup test run seed clean lint fmt
 
 setup:
 	$(PYTHON) -m venv $(VENV)
@@ -16,6 +16,12 @@ seed:
 
 run:
 	$(BIN)/flask --app taskboard run --debug --port 5050
+
+lint:
+	$(BIN)/ruff check . && $(BIN)/ruff format --check .
+
+fmt:
+	$(BIN)/ruff check --fix --exit-zero . && $(BIN)/ruff format . && $(BIN)/ruff check .
 
 clean:
 	rm -rf $(VENV) instance .pytest_cache
