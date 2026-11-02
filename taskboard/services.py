@@ -94,6 +94,20 @@ def project_stats(db, project_id):
     }
 
 
+TOP_TAGS_LIMIT = 5
+
+
+def global_stats(db):
+    counts = repository.count_all_tasks_by_status(db)
+    return {
+        "projects": repository.count_active_projects(db),
+        "total": sum(counts.values()),
+        "by_status": {status: counts.get(status, 0) for status in VALID_STATUSES},
+        "overdue": repository.count_all_overdue_tasks(db, datetime.now().date().isoformat()),
+        "top_tags": repository.top_tags(db, TOP_TAGS_LIMIT),
+    }
+
+
 def list_project_tags(db, project_id):
     get_project(db, project_id)
     return repository.count_project_tags(db, project_id)

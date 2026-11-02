@@ -11,6 +11,11 @@ def _json_body():
     return request.get_json(silent=True)
 
 
+@bp.get("/stats")
+def global_stats():
+    return jsonify(services.global_stats(get_db()))
+
+
 # --- projects -----------------------------------------------------------------
 
 
