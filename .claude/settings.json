@@ -16,7 +16,10 @@
       "Bash(.venv/bin/ruff check:*)",
       "Bash(.venv/bin/ruff format --check:*)",
       "Bash(make run:*)",
-      "mcp__claude_ai_github__*"
+      "mcp__claude_ai_github__*",
+      "Bash(make setup:*)",
+      "Bash(git worktree:*)",
+      "Bash(git push github:*)"
     ],
     "deny": [
       "Bash(git push --force:*)",
