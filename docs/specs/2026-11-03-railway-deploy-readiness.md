@@ -65,7 +65,8 @@ Current behaviour:
 | Persistence on Railway | README: mount a volume at `/data` and set `DATABASE=/data/taskboard.sqlite` | Railway's container filesystem is reset on every deploy |
 | Demo data on Railway | README documents a manual seed via `railway ssh` then `flask --app taskboard seed`, with a data-loss warning next to the command | Seeding is destructive; never automatic |
 | Local gunicorn | New `make serve` target: `$(BIN)/gunicorn "taskboard:create_app()"` | Same command as Railway; lets developers and the verify stage run it |
-| Testing the default path | A test may create the app without `DATABASE` and check only `app.config["DATABASE"]`; after T2 this creates missing tables in the real `instance/taskboard.sqlite`, which is non-destructive and git-ignored | No hook exists to move `instance_path` |
+| Testing the default path | Tests that create the app without `DATABASE` (T1.3-T1.5) check only `app.config["DATABASE"]` and stub schema creation with `monkeypatch.setattr("taskboard.db.ensure_schema", lambda: None, raising=False)` (`raising=False` so the test also runs before T2 adds the function) | No hook exists to move `instance_path`; without the stub the tests would write to, and depend on, the developer's real `instance/taskboard.sqlite` |
+| Recovery from schema drift | No CLI recovery: `flask init-db` / `flask seed` also go through `create_app()`, so on a drifted database they fail in `ensure_schema()` before resetting. Documented manual recovery: delete the database file (on Railway: `railway ssh`, then `rm /data/taskboard.sqlite`) and restart; tables are recreated empty | Column migrations are a non-goal; keeping `ensure_schema()` unconditional keeps `create_app()` simple |
 | Testing hidden rows | Rows the API hides (e.g. soft-deleted projects) are compared with raw SQL | Not visible through HTTP |
 | Testing `make serve` | Not in pytest (port-bound, flaky in CI). Checked by hand in the verify stage, output pasted in the PR. pytest checks the static files only | Keeps CI fast and stable |
 | Testing on Railway | The owner checks a real deploy after merge (health check passes, Python 3.12 used, app reachable). Not a merge gate | Cannot run Railway from the repo |
@@ -162,7 +163,8 @@ with app.app_context():
 **README**: new "Deploy to Railway" section: create the service from the repo; add a volume mounted at
 `/data`; set `DATABASE=/data/taskboard.sqlite`; Railway sets `PORT`; the health check is `/health`; tables
 are created on first start; optional manual seed via `railway ssh` then `flask --app taskboard seed` with a
-data-loss warning next to it; `make serve` runs the same command locally (macOS/Linux only). Also list
+data-loss warning next to it; recovery when the app fails to start on a database with an old column layout
+(delete the database file, restart; data is lost); `make serve` runs the same command locally (macOS/Linux only). Also list
 `make serve` in Quick start and document `DATABASE` and its default.
 
 ## Risks and unknowns
@@ -171,8 +173,10 @@ data-loss warning next to it; `make serve` runs the same command locally (macOS/
   database with existing rows. T2 is high risk and gets human review.
 - **No volume configured.** Data disappears on each deploy. Mitigated by the README; cannot be enforced in code.
 - **Schema drift.** A database with an old column layout (e.g. `projects` without `deleted_at`) makes
-  `CREATE UNIQUE INDEX ... WHERE deleted_at IS NULL` fail, so the app does not start. Accepted (non-goal);
-  fix by hand or reset.
+  `CREATE UNIQUE INDEX ... WHERE deleted_at IS NULL` fail, so the app does not start. `flask init-db` /
+  `flask seed` cannot fix it either: they run `create_app()` (and `ensure_schema()`) first and fail the same
+  way. Accepted (non-goal); manual recovery is to delete the database file and restart (documented in the
+  README by T4), or fix the table by hand with `sqlite3`.
 - **SQLite with 2 workers.** Concurrent writes can hit `database is locked` under load. Acceptable for a
   training app; preload removes the startup race.
 - **Railway behaviour unverified in the repo.** That the builder reads `.python-version`, the start command,
@@ -316,7 +320,8 @@ data-loss warning next to it; `make serve` runs the same command locally (macOS/
 - [ ] README has a "Deploy to Railway" section covering: creating the service from the repo, a volume
       mounted at `/data`, `DATABASE=/data/taskboard.sqlite`, `PORT` set by Railway, the `/health` check, tables
       created on first start, and the optional manual seed via `railway ssh` then `flask --app taskboard seed`
-      with a data-loss warning next to the command.
+      with a data-loss warning next to the command, and the manual recovery for a database with an old column
+      layout (delete the database file, e.g. `railway ssh` then `rm /data/taskboard.sqlite`, and restart).
 - [ ] Quick start lists `make serve` (noted as macOS/Linux only); the README names `DATABASE` as a supported
       environment variable with its default `instance/taskboard.sqlite`.
 - [ ] Commands and file names in the README match `railway.json`, `gunicorn.conf.py`, the Makefile and
@@ -328,11 +333,11 @@ data-loss warning next to it; `make serve` runs the same command locally (macOS/
 
 **Test plan**
 
-- Test cases: T4.1-T4.4 (see Test matrix). Reviewer checklist; no automated test.
+- Test cases: T4.1-T4.5 (see Test matrix). Reviewer checklist; no automated test.
 
 ## Test matrix
 
-54 rows (39 must, 15 should). Tests are named `test_deploy_t<task>_<n>_<description>` (for example
+55 rows (40 must, 15 should). Tests are named `test_deploy_t<task>_<n>_<description>` (for example
 `test_deploy_t2_5_existing_rows_survive_restart`); rows with level `manual` are run by hand in the verify
 stage or checked by the reviewer, and carry `# T<task>.<n>` in the PR checklist.
 
@@ -340,9 +345,9 @@ stage or checked by the reviewer, and carry `# T<task>.<n>` in the PR checklist.
 | --- | --- | --- | --- | --- | --- | --- |
 | T1.1 | T1 | Env `DATABASE` is used | happy | Given `monkeypatch.setenv("DATABASE", str(tmp_path/"env.sqlite"))` and `create_app({"TESTING": True})` with no DATABASE key / When `init_db()` runs, then `POST /projects {"name":"P1"}` / Then 201, `app.config["DATABASE"] == str(tmp_path/"env.sqlite")`, and raw `sqlite3` on that file returns `["P1"]` for `SELECT name FROM projects` | integration | must |
 | T1.2 | T1 | Env `DATABASE` is used | edge | Given env `DATABASE=<tmp>/env.sqlite` and `test_config={"TESTING": True, "SECRET_KEY": "x"}` (other keys only) / When `create_app` / Then config DATABASE is the env path | unit | should |
-| T1.3 | T1 | Default when unset | happy | Given `monkeypatch.delenv("DATABASE", raising=False)` / When `create_app()` / Then `app.config["DATABASE"] == os.path.join(app.instance_path, "taskboard.sqlite")`; no HTTP calls | unit | must |
-| T1.4 | T1 | Empty / whitespace means default | edge | Given env `DATABASE=""` / When `create_app()` / Then config DATABASE = `<instance_path>/taskboard.sqlite` | unit | must |
-| T1.5 | T1 | Empty / whitespace means default | edge | Given env `DATABASE="   "`, then `"\t\n"` (parametrized) / When `create_app()` / Then config DATABASE = default path; no file named with spaces is created in cwd | unit | must |
+| T1.3 | T1 | Default when unset | happy | Given `monkeypatch.delenv("DATABASE", raising=False)` and `ensure_schema` stubbed (see Decisions) / When `create_app()` / Then `app.config["DATABASE"] == os.path.join(app.instance_path, "taskboard.sqlite")`; no HTTP calls | unit | must |
+| T1.4 | T1 | Empty / whitespace means default | edge | Given env `DATABASE=""` and `ensure_schema` stubbed / When `create_app()` / Then config DATABASE = `<instance_path>/taskboard.sqlite` | unit | must |
+| T1.5 | T1 | Empty / whitespace means default | edge | Given env `DATABASE="   "`, then `"\t\n"` (parametrized) and `ensure_schema` stubbed / When `create_app()` / Then config DATABASE = default path; no file named with spaces is created in cwd | unit | must |
 | T1.6 | T1 | Surrounding whitespace is stripped | edge | Given env `DATABASE=" <tmp>/x.sqlite "` / When `create_app()` and `init_db()` / Then config DATABASE == `"<tmp>/x.sqlite"` and that file exists | unit | must |
 | T1.7 | T1 | test_config wins | happy | Given env `DATABASE=<tmp>/env.sqlite` and `test_config={"DATABASE": "<tmp>/tc.sqlite"}` / When `create_app`, `init_db()`, `POST /projects {"name":"P"}` / Then config DATABASE = tc path; the row is in `tc.sqlite`; `env.sqlite` does not exist or has no row | integration | must |
 | T1.8 | T1 | Relative path used as given | happy | Given `monkeypatch.chdir(tmp_path)` and env `DATABASE=rel.sqlite` / When `create_app`, `init_db()`, `POST /projects` / Then 201; config DATABASE == `"rel.sqlite"` (not absolute); `tmp_path/"rel.sqlite"` holds the row | integration | must |
@@ -390,5 +395,6 @@ stage or checked by the reviewer, and carry `# T<task>.<n>` in the PR checklist.
 | T3.13 | T3 | `.python-version` | happy | Given `.python-version` / When read and stripped / Then `== "3.12"` | unit | must |
 | T4.1 | T4 | "Deploy to Railway" section | happy | Given README.md / When the reviewer reads it / Then a "Deploy to Railway" heading covers: create the service from the repo, a volume at `/data`, `DATABASE=/data/taskboard.sqlite`, `PORT` set by Railway, `/health` check, tables created on first start | manual | must |
 | T4.2 | T4 | Manual seed step | edge | Given the seed step / When reviewed / Then it shows `railway ssh` then `flask --app taskboard seed`, marked optional, with a data-loss warning in the same block or the line just before or after | manual | must |
+| T4.5 | T4 | Schema-drift recovery documented | edge | Given README / When reviewed / Then it explains that if the app fails to start with `no such column` on an old database, `init-db` / `seed` do not help; recovery is deleting the database file (`railway ssh`, `rm /data/taskboard.sqlite`) and restarting, with a data-loss warning | manual | must |
 | T4.3 | T4 | Quick start and `DATABASE` | happy | Given README / When reviewed / Then Quick start lists `make serve` marked macOS/Linux only; `DATABASE` is named as an env var with default `instance/taskboard.sqlite`, and plain paths only (no `~`, no URI) | manual | must |
 | T4.4 | T4 | README matches config | happy | Given README, `railway.json`, `gunicorn.conf.py`, Makefile, `.python-version` / When cross-checked / Then README names `railway.json` and `.python-version`; start command, `/health`, port default `5050`, `make serve` and Python `3.12` match exactly; anything said about `gunicorn.conf.py` is correct | manual | must |
