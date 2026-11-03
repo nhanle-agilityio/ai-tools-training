@@ -25,6 +25,8 @@ def create_app(test_config=None):
         os.makedirs(db_parent, exist_ok=True)
 
     db.init_app(app)
+    with app.app_context():
+        db.ensure_schema()
 
     from .routes import bp
 
