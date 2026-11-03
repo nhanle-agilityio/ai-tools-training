@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from taskboard import create_app
+from taskboard.seed import PROJECTS
 
 PKG = Path(__file__).resolve().parent.parent / "taskboard"
 TABLES = {"projects", "tasks", "task_tags", "task_comments"}
@@ -314,7 +315,7 @@ def test_deploy_t2_17_seed_resets_and_loads_demo(tmp_path):
     assert result.exit_code == 0, result.output
     names = [r[0] for r in raw(path, "SELECT name FROM projects")]
     assert "Mine" not in names
-    assert len(names) >= 1
+    assert {p["name"] for p in PROJECTS} <= set(names)
 
 
 # --- repeated creates ---------------------------------------------------------
