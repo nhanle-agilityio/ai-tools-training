@@ -1,6 +1,6 @@
 {
   "$schema": "./devflow.schema.json",
-  "devflowVersion": "2.4.0",
+  "devflowVersion": "2.5.0",
   "github": { "owner": "nhanle-agilityio", "repo": "ai-tools-training", "remote": "github" },
   "baseBranch": "feature/example_taskboard",
   "protectedBranches": ["main", "develop"],
