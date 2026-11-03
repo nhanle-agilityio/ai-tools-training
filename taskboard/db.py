@@ -18,10 +18,20 @@ def close_db(e=None):
         conn.close()
 
 
-def init_db():
+def _run_script(name):
     conn = get_db()
-    with current_app.open_resource("schema.sql") as f:
+    with current_app.open_resource(name) as f:
         conn.executescript(f.read().decode("utf8"))
+
+
+def ensure_schema():
+    """Create missing tables and indexes. Never drops or deletes anything."""
+    _run_script("schema.sql")
+
+
+def init_db():
+    _run_script("drop.sql")
+    _run_script("schema.sql")
 
 
 @click.command("init-db")

@@ -1,0 +1,4 @@
+DROP TABLE IF EXISTS task_comments;
+DROP TABLE IF EXISTS task_tags;
+DROP TABLE IF EXISTS tasks;
+DROP TABLE IF EXISTS projects;
