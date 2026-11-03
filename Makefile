@@ -2,7 +2,7 @@ PYTHON ?= python3.12
 VENV := .venv
 BIN := $(VENV)/bin
 
-.PHONY: setup test run seed clean lint fmt
+.PHONY: setup test run seed serve clean lint fmt
 
 setup:
 	$(PYTHON) -m venv $(VENV)
@@ -16,6 +16,9 @@ seed:
 
 run:
 	$(BIN)/flask --app taskboard run --debug --port 5050
+
+serve:
+	$(BIN)/gunicorn "taskboard:create_app()"
 
 lint:
 	$(BIN)/ruff check . && $(BIN)/ruff format --check .
