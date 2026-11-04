@@ -39,7 +39,7 @@ direction). It led to the "never merge without a yes" rule in `CLAUDE.md` and me
 | One Remote Control steer from the phone | Done | `/rc` plus phone steer edited the artifact (v3, "developed in parallel worktrees"); session of 2026-10-21 10:43 UTC | Phone screenshot not in the repo. |
 | `ultrathink` and `/effort` levels on one bug, plan-tier noted | Done | `docs/notes/effort.md` (`dab1c1b`); TB-103 fixed in `7f07507` and `9e1e146` (MR !11) | Tiers recorded: low, medium, high and `ultrathink` all worked. |
 | Subagents intro (course, bounded investigation while main session codes) | Partial | Plan was prepared in the `tb-103` worktree session (Explore plus `code-reviewer`); a second, recorded run on 2026-11-04 in `docs/notes/subagents.md` | Practical part done: no transcript of the Day 6 run was kept, so the note records a measured run instead. Course completion unknown. |
-| Cloud session for a long task, close the laptop, check from claude.ai/code | **Not done** | Carried as "open" in every report from 2026-10-22 to 2026-11-04 | Confirmed still open. Blocker noted on day 6: repo is on GitLab, a cloud session needs `CCR_FORCE_BUNDLE=1` and cannot push back. The repo is now on GitHub (`github` remote), so the blocker is gone. |
+| Cloud session for a long task, close the laptop, check from claude.ai/code | Done (2026-11-04) | `claude --cloud` drafted the devflow retro issue list (read-only task) and was followed from claude.ai/code | `claude --cloud` uses the `origin` remote (GitLab) and has no option to pick another one. The first run started from a GitLab branch 139 commits behind; after a fast-forward push of the mirror (and tag `v0.1.0`) it ran on current code. A GitLab-based cloud session cannot push back, so it suits read-only tasks. |
 | Exercise: one artifact, one loop run, one phone steer, screenshotted to the channel | **Not done** | Listed as "post screenshots to the channel" in reports through 2026-11-04 | Confirmed still open. Screenshots exist locally; posting is unknown. |
 
 ## Day 11: Role day (web) and Developer Checkpoint 3 (2026-10-27 and 2026-10-28)
@@ -58,9 +58,8 @@ direction). It led to the "never merge without a yes" rule in `CLAUDE.md` and me
 
 ## Open items
 
-1. **Day 6, cloud session.** Run a long task with `claude --cloud` on the GitHub repo (for example, a
-   spec or test-matrix review), close the laptop, check progress at claude.ai/code, and take a screenshot.
-   Add a short note to `docs/notes/` with what ran and what was observed.
+1. **Day 6, cloud session.** Closed on 2026-11-04 (see the table). To start from the GitHub repo instead,
+   run `claude --cloud` in a clone whose `origin` is GitHub, or start the session from claude.ai/code.
 2. **Day 6, screenshots to the channel.** Post the artifact, loop and phone-steer screenshots, and note
    the date. If the channel is no longer used, record the reason instead.
 3. **Day 6, artifact shared with a peer.** Send the artifact link to one person and note who and when, or
