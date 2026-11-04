@@ -63,13 +63,16 @@ Today the overdue rule lives in `services.is_overdue`: a live task is overdue wh
 | Checking hidden seed state | Tests may read `tasks`, `task_tags` and `task_comments` through `get_db()` in the `app` fixture's context: to count soft-deleted tasks and comments (`deleted_at IS NOT NULL`) and to confirm the deleted task had tags and a comment | Hidden from HTTP once deleted; a comment on the deleted task also returns 404 |
 | Seed minimums | Website: more than 5 tasks. "Relative dates": at least one live task is overdue and at least one has `due_date >= today`; no frozen clock. `author` only needs to be non-blank. "Tasks listed" means `pagination.total` | Measurable without exact counts |
 | T4 verification | README criteria are a manual review checklist, not pytest. Example JSON must match the real response keys; numbers are illustrative | Docs only |
-| Project soft-deleted but its tasks not | Excluded from `GET /stats`. T2 has one DB-level test that sets `projects.deleted_at` without touching tasks. Parity with `GET /tasks/overdue` is only checked on data created through the API | The API cascade hides a missing project join |
+| Project soft-deleted but its tasks not | Its tasks are not overdue for any endpoint: excluded from `GET /stats` and from `GET /tasks/overdue`, whether the project was deleted through the API or by setting `projects.deleted_at` directly. T2 has one DB-level test that sets `projects.deleted_at` without touching tasks; #73 adds the matching parity test for `GET /tasks/overdue` | The API cascade hides a missing project join |
 | "Today" | Server-local date, as `is_overdue`. Tests use `date.today() ± n`, like existing tests; a run across midnight may flake | Same as the current suite |
 | Edge HTTP cases | Non-integer id, trailing slash, `POST /stats`: Flask defaults (404 / 405); no dedicated tests required | App-wide behaviour |
 | `top_tags` tie order | `tag` ascending in SQLite `BINARY` order | Deterministic without collation |
 | Invalid stored `due_date`, performance | Ignored: the API cannot store an invalid date; no response-time target | Out of scope |
 | `seed()` on a non-empty database | Not supported; `make seed` resets with `init_db()` first | Current behaviour |
 | `is_overdue` in README | Not mentioned | Not requested |
+
+- 2026-11-04 (#73, Q1): Accept the fix commits' change to the QA test `tests/test_overdue_soft_deleted_project.py` as the G1.1 test, or have QA rewrite it? → Accepted: the change (`892e834`) is a ruff line wrap only.
+- 2026-11-04 (#73, Q2): Is a task of a soft-deleted project not overdue for any endpoint? → Confirmed: a task of a soft-deleted project is not overdue for any endpoint.
 
 ## Design
 
