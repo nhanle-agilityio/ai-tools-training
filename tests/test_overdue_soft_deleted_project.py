@@ -10,7 +10,9 @@ def test_g1_1_overdue_list_excludes_tasks_of_project_soft_deleted_in_db(app, cli
     a_task = client.post(
         "/tasks", json={"project_id": project["id"], "title": "A", "status": "todo", "due_date": due}
     ).get_json()
-    resp = client.post("/tasks", json={"project_id": b["id"], "title": "B", "status": "todo", "due_date": due})
+    resp = client.post(
+        "/tasks", json={"project_id": b["id"], "title": "B", "status": "todo", "due_date": due}
+    )
     assert resp.status_code == 201
     with app.app_context():
         db = get_db()
