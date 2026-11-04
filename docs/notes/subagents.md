@@ -6,8 +6,8 @@
   returns one final report. The main session sees only that report, not the files it read.
 - Built-in types: `Explore` (read-only search), `Plan` (read-only design), `general-purpose` (all tools).
   Project agents live in `.claude/agents/<name>.md`; this repo uses `code-reviewer` (read-only review).
-- The model can be set per call. Our rule: Opus plans and reviews, Sonnet implements, Haiku searches and
-  runs tests.
+- The model can be set per call. Our rule: Opus plans and reviews diffs; Sonnet implements and runs
+  bounded read-only checks (such as the coverage review below); Haiku searches and runs tests.
 
 ## Run 1: TB-103 (Day 6)
 
@@ -24,7 +24,7 @@ background:
 | Subagent | Task | Tool calls | Tokens | Time | Result |
 | --- | --- | --- | --- | --- | --- |
 | QA coverage review | Check every `must` row of two specs against the tests, run the suite | 12 | ~79k | 1m41s | 93 must rows: 85 covered, 3 weak, 5 manual; 323 tests pass. The 3 weak rows became issue #74 |
-| Checkpoint audit | Read the session transcripts of Day 3, 6 and 11 and match each item to evidence | 26 | ~106k | 2m34s | `checklist-audit.md` (this PR) |
+| Checkpoint audit | Read the session transcripts of Day 3, 6 and 11 and match each item to evidence | 26 | ~106k | 2m34s | `checklist-audit.md` (PR #75) |
 
 The main session's context grew only by the two reports, about 2k tokens, instead of the ~185k the
 subagents read.

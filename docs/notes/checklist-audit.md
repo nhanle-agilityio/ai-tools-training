@@ -38,7 +38,7 @@ direction). It led to the "never merge without a yes" rule in `CLAUDE.md` and me
 | One `/loop` run (built-in prompt, then custom `/loop 5m check the deploy`, plus a `loop.md`) | Done | `.claude/loop.md` in `0f3c356` (MR !10); both loops run, server stopped and restarted to trigger detection | |
 | One Remote Control steer from the phone | Done | `/rc` plus phone steer edited the artifact (v3, "developed in parallel worktrees"); session of 2026-10-21 10:43 UTC | Phone screenshot not in the repo. |
 | `ultrathink` and `/effort` levels on one bug, plan-tier noted | Done | `docs/notes/effort.md` (`dab1c1b`); TB-103 fixed in `7f07507` and `9e1e146` (MR !11) | Tiers recorded: low, medium, high and `ultrathink` all worked. |
-| Subagents intro (course, bounded investigation while main session codes) | Done | Plan was prepared in the `tb-103` worktree session (Explore plus `code-reviewer`); a second, recorded run on 2026-11-04 in `docs/notes/subagents.md` | No transcript of the Day 6 run was kept; the note records a measured run instead. Course completion unknown. |
+| Subagents intro (course, bounded investigation while main session codes) | Partial | Plan was prepared in the `tb-103` worktree session (Explore plus `code-reviewer`); a second, recorded run on 2026-11-04 in `docs/notes/subagents.md` | Practical part done: no transcript of the Day 6 run was kept, so the note records a measured run instead. Course completion unknown. |
 | Cloud session for a long task, close the laptop, check from claude.ai/code | **Not done** | Carried as "open" in every report from 2026-10-22 to 2026-11-04 | Confirmed still open. Blocker noted on day 6: repo is on GitLab, a cloud session needs `CCR_FORCE_BUNDLE=1` and cannot push back. The repo is now on GitHub (`github` remote), so the blocker is gone. |
 | Exercise: one artifact, one loop run, one phone steer, screenshotted to the channel | **Not done** | Listed as "post screenshots to the channel" in reports through 2026-11-04 | Confirmed still open. Screenshots exist locally; posting is unknown. |
 
@@ -65,8 +65,9 @@ direction). It led to the "never merge without a yes" rule in `CLAUDE.md` and me
    the date. If the channel is no longer used, record the reason instead.
 3. **Day 6, artifact shared with a peer.** Send the artifact link to one person and note who and when, or
    state that sharing by link was the delivery.
-4. **Day 6, subagents.** Closed on 2026-11-04: `docs/notes/subagents.md` records two parallel subagent
-   runs with their cost and results.
+4. **Day 6, subagents.** The practical part is covered since 2026-11-04 (`docs/notes/subagents.md`
+   records two parallel subagent runs with their cost and results). Still open: confirm the course was
+   completed, then mark the item done.
 5. **Day 11, mobile.** Install Xcode, run the iOS Simulator pane loop (build, run, tap, screenshot) with
    a small app against the TaskBoard API. If Xcode is not available, record that reason and skip the
    Android emulator.
