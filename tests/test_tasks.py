@@ -425,13 +425,19 @@ def test_t1_1_tag_filter_returns_matching_tasks(client, tagged):
 def test_t1_4_t1_5_multiple_tags_are_anded(client, make_task, tagged):
     d = make_task(title="D", tags=["ui"])
     for query in ("tag=bug&tag=ui", "tag=ui&tag=bug"):
-        assert _ids(client.get(f"/tasks?{query}")) == [tagged["a"]["id"]]
+        resp = client.get(f"/tasks?{query}")
+        assert resp.status_code == 200
+        assert _ids(resp) == [tagged["a"]["id"]]
+        assert resp.get_json()["pagination"]["total"] == 1
     assert d["id"] not in _ids(client.get("/tasks?tag=bug&tag=ui"))
 
 
 @pytest.mark.parametrize("query", ["tag=Bug", "tag=%20bug%20", "tag=%09BUG%0A"])
 def test_t1_7_t1_8_tag_is_normalised(client, tagged, query):
-    assert set(_ids(client.get(f"/tasks?{query}"))) == {tagged["a"]["id"], tagged["b"]["id"]}
+    resp = client.get(f"/tasks?{query}")
+    assert resp.status_code == 200
+    assert set(_ids(resp)) == {tagged["a"]["id"], tagged["b"]["id"]}
+    assert resp.get_json()["pagination"]["total"] == 2
 
 
 def test_t1_13_duplicate_tags_count_once(client, tagged):
