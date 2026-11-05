@@ -201,7 +201,9 @@ def list_tasks(db, *, project_id=None, status=None, q=None, tags=(), sort="creat
 
 def list_open_tasks_with_due_date(db):
     return db.execute(
-        "SELECT * FROM tasks WHERE status != 'done' AND due_date IS NOT NULL AND deleted_at IS NULL ORDER BY due_date, id"
+        "SELECT t.* FROM tasks t JOIN projects p ON p.id = t.project_id "
+        "WHERE t.status != 'done' AND t.due_date IS NOT NULL AND t.deleted_at IS NULL "
+        "AND p.deleted_at IS NULL ORDER BY t.due_date, t.id"
     ).fetchall()
 
 
