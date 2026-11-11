@@ -1,6 +1,8 @@
 'use strict';
 // Devflow merge gate. Called from .github/workflows/devflow-merge-gate.yml.
 // Merges at most one `devflow` + `risk:low` PR per run, and only when everything is green.
+// Candidates are tried in priority order (the linked issue's labels.priority label, then PR number);
+// priority only changes the order, never the rules.
 // Config: .claude/devflow.json (baseBranch, github, labels, mergeGate). Claude itself never merges.
 
 const fs = require('fs');
@@ -9,10 +11,17 @@ const CONFIG_PATH = '.claude/devflow.json';
 const CONFLICT_MARKER = '<!-- devflow-gate:conflict -->';
 const GATE_MERGED_MARKER = '<!-- devflow-gate-merged -->';
 const ALWAYS_PROTECTED = ['main', 'master', 'develop', 'trunk', 'production'];
+// Paths that are always high risk, whatever the label says: CI and the agent's own configuration.
+const ALWAYS_HIGH_PATHS = ['.github/**', '.claude/**'];
+const REVIEW_CONTEXT = 'devflow/review';
+const REVIEW_BOT = 'github-actions[bot]';
 
 const DEFAULTS = {
   baseBranch: 'main',
-  labels: { devflow: 'devflow', riskLow: 'risk:low', riskHigh: 'risk:high', blocked: 'agent:blocked', stacked: 'stacked' },
+  labels: {
+    devflow: 'devflow', riskLow: 'risk:low', riskHigh: 'risk:high', blocked: 'agent:blocked', stacked: 'stacked',
+    priority: ['priority:critical', 'priority:high', 'priority:normal', 'priority:low'],
+  },
   mergeGate: { enabled: false, dryRun: true, requiredChecks: ['devflow/review'], method: 'merge' },
 };
 
@@ -22,8 +31,50 @@ function withDefaults(raw) {
     ...c,
     baseBranch: c.baseBranch || DEFAULTS.baseBranch,
     labels: { ...DEFAULTS.labels, ...(c.labels || {}) },
+    risk: { ...(c.risk || {}) },
     mergeGate: { ...DEFAULTS.mergeGate, ...(c.mergeGate || {}) },
   };
+}
+
+// Glob to anchored RegExp: ** crosses "/", * and ? do not. "**/" also matches zero directories.
+// Copy of globToRegExp in workflows/next-task-engine.js (the gate cannot import it); tests keep them equal.
+function globToRegExp(glob) {
+  let re = '';
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i];
+    if (c === '*') {
+      if (glob[i + 1] === '*') {
+        if (glob[i + 2] === '/') {
+          re += '(?:.*/)?';
+          i += 2;
+        } else {
+          re += '.*';
+          i += 1;
+        }
+      } else {
+        re += '[^/]*';
+      }
+    } else if (c === '?') {
+      re += '[^/]';
+    } else {
+      re += c.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+    }
+  }
+  return new RegExp(`^${re}$`);
+}
+
+// The first changed file (new or, for a rename, previous name) that matches a high-risk glob, or null.
+function highRiskHit(files, config) {
+  const globs = [...(Array.isArray(config.risk?.highPaths) ? config.risk.highPaths : []), ...ALWAYS_HIGH_PATHS];
+  const compiled = globs.filter((g) => typeof g === 'string' && g).map((g) => [g, globToRegExp(g)]);
+  for (const f of files) {
+    for (const name of [f.filename, f.previous_filename]) {
+      if (!name) continue;
+      const hit = compiled.find(([, re]) => re.test(name));
+      if (hit) return { file: name, glob: hit[0] };
+    }
+  }
+  return null;
 }
 
 // Workspace file first (default branch), then the same file at baseBranch, which is the source of truth.
@@ -46,13 +97,58 @@ async function loadConfig({ github, context, core }) {
   return withDefaults(config);
 }
 
-async function listCandidates({ github, context }, config, only) {
+// Index of the first label in `list` that the item has. No priority label counts as the "normal" entry
+// (the first one whose name ends in "normal"), or after every listed priority when there is none.
+function priorityRank(names, list) {
+  const order = Array.isArray(list) ? list : [];
+  const has = new Set(names || []);
+  const hit = order.findIndex((l) => has.has(l));
+  if (hit !== -1) return hit;
+  const normal = order.findIndex((l) => /normal$/i.test(l));
+  return normal !== -1 ? normal : order.length;
+}
+
+// Sorted copy: lower rank first, then lower PR number.
+function orderCandidates(prs) {
+  return [...prs].sort((a, b) => a.rank - b.rank || a.number - b.number);
+}
+
+async function readIssueCached({ github, context }, state, number) {
+  const { owner, repo } = context.repo;
+  state.issues = state.issues || new Map();
+  if (!state.issues.has(number)) {
+    const { data } = await github.rest.issues.get({ owner, repo, issue_number: number });
+    state.issues.set(number, data);
+  }
+  return state.issues.get(number);
+}
+
+async function listCandidates(ctx, config, only, state) {
+  const { github, context, core } = ctx;
   const { owner, repo } = context.repo;
   const open = await github.paginate(github.rest.pulls.list, { owner, repo, state: 'open', per_page: 100 });
-  return open
+  const mine = open
     .filter((p) => (p.labels || []).some((l) => l.name === config.labels.devflow))
-    .filter((p) => !only || p.number === only)
-    .sort((a, b) => a.number - b.number);
+    .filter((p) => !only || p.number === only);
+  const ranked = [];
+  for (const pr of mine) {
+    // The best priority among the linked issues; the PR's own labels when it links none.
+    let names = (pr.labels || []).map((l) => l.name);
+    const linked = linkedIssues(pr.body);
+    if (linked.length) {
+      names = [];
+      for (const n of linked) {
+        try {
+          const issue = await readIssueCached(ctx, state, n);
+          names = names.concat((issue.labels || []).map((l) => (typeof l === 'string' ? l : l.name)));
+        } catch (e) {
+          core.info(`#${pr.number}: could not read linked issue #${n} for its priority: ${e.message}`);
+        }
+      }
+    }
+    ranked.push(Object.assign(pr, { rank: priorityRank(names, config.labels.priority) }));
+  }
+  return orderCandidates(ranked);
 }
 
 function linkedIssues(body) {
@@ -75,7 +171,11 @@ async function checksGreen({ github, context }, sha, names) {
       .filter((r) => r.name === name)
       .sort((a, b) => String(b.started_at || '').localeCompare(String(a.started_at || '')) || b.id - a.id);
     const latestRun = mine[0];
-    const latestStatus = statuses.find((s) => s.context === name); // newest first
+    // Newest first. Anyone with write access can create a commit status, so the review verdict only
+    // counts when the review workflow's own token created it.
+    const latestStatus = statuses.find(
+      (s) => s.context === name && (name !== REVIEW_CONTEXT || s.creator?.login === REVIEW_BOT),
+    );
     const runOk = latestRun && latestRun.status === 'completed' && latestRun.conclusion === 'success';
     const statusOk = latestStatus && latestStatus.state === 'success';
     if (runOk || statusOk) continue;
@@ -108,6 +208,17 @@ async function unresolvedThreads({ github, context }, pr) {
     const last = n.comments?.nodes?.[0]?.author?.login;
     return !(author && last === author);
   }).length;
+}
+
+// Best effort: failing to relabel must not stop the gate from skipping the PR.
+async function relabelHigh({ github, context, core }, config, pr) {
+  const { owner, repo } = context.repo;
+  try {
+    await github.rest.issues.addLabels({ owner, repo, issue_number: pr.number, labels: [config.labels.riskHigh] });
+    await github.rest.issues.removeLabel({ owner, repo, issue_number: pr.number, name: config.labels.riskLow });
+  } catch (e) {
+    core.warning(`#${pr.number}: could not relabel as ${config.labels.riskHigh}: ${e.message}`);
+  }
 }
 
 async function blockOnConflict({ github, context }, config, pr, dryRun) {
@@ -185,14 +296,7 @@ async function evaluate(ctx, config, listed, state) {
   if (state.merged) return { action: 'deferred', reason: 'deferred: one merge per run' };
 
   // A PR merges only when every issue its linked issues depend on is closed.
-  state.issues = state.issues || new Map();
-  const readIssue = async (number) => {
-    if (!state.issues.has(number)) {
-      const { data } = await github.rest.issues.get({ owner, repo, issue_number: number });
-      state.issues.set(number, data);
-    }
-    return state.issues.get(number);
-  };
+  const readIssue = (number) => readIssueCached(ctx, state, number);
   for (const n of linkedIssues(listed.body)) {
     const re = /depends on #(\d+)/gi;
     const body = (await readIssue(n)).body || '';
@@ -206,6 +310,19 @@ async function evaluate(ctx, config, listed, state) {
   }
 
   const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: listed.number });
+  // The risk label is a claim; the files are the evidence. Checked before anything that touches the branch.
+  const files = await github.paginate(github.rest.pulls.listFiles, {
+    owner, repo, pull_number: pr.number, per_page: 100,
+  });
+  const hit = highRiskHit(files, config);
+  if (hit) {
+    if (!dryRun) await relabelHigh(ctx, config, pr);
+    return {
+      action: dryRun ? 'would skip' : 'skipped',
+      reason: `touches ${hit.file} (${hit.glob}): waits for a human`,
+    };
+  }
+
   if (pr.mergeable === null || pr.mergeable === undefined) {
     return { action: 'skipped', reason: 'mergeability not computed yet' };
   }
@@ -268,9 +385,9 @@ module.exports = async function gate({ github, context, core, config }) {
     }
     const dryRun = cfg.mergeGate.dryRun !== false;
     const only = Number(context.payload?.inputs?.pr) || null;
-    const candidates = await listCandidates(ctx, cfg, only);
-    const rows = [];
     const state = { merged: false };
+    const candidates = await listCandidates(ctx, cfg, only, state);
+    const rows = [];
     for (const listed of candidates) {
       try {
         const d = await evaluate(ctx, cfg, listed, state);
@@ -287,4 +404,7 @@ module.exports = async function gate({ github, context, core, config }) {
 };
 
 module.exports.withDefaults = withDefaults;
+module.exports.globToRegExp = globToRegExp;
+module.exports.priorityRank = priorityRank;
+module.exports.orderCandidates = orderCandidates;
 module.exports.GATE_MERGED_MARKER = GATE_MERGED_MARKER;
